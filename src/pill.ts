@@ -32,6 +32,8 @@ export class KioskPillCard extends KioskBaseCard {
     return 1;
   }
   protected get detail() {
+    const dynamic = this.presentation("state_display");
+    if (dynamic !== undefined) return String(dynamic);
     const s = this.state;
     if (this.config.state_display !== undefined)
       return this.config.state_display;
@@ -47,10 +49,10 @@ export class KioskPillCard extends KioskBaseCard {
   protected action(target: "icon" | "body", gesture = "tap"): Action {
     const key = (target === "icon" ? "icon_" : "") + gesture + "_action";
     return (
-      this.config[key] ||
+      this.resolvedAction(key, this.config[key] ||
       (target === "icon" ? this.config[gesture + "_action"] : undefined) || {
         action: gesture === "double_tap" ? "none" : "more-info",
-      }
+      })
     );
   }
   private disabled(target: "icon" | "body") {

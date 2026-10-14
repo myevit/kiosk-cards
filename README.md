@@ -83,6 +83,63 @@ For entity/action/pill cards, supported options are `tap_action`, `hold_action`,
 
 Icon and body are separate keyboard-accessible buttons. Taps and holds are isolated from parent click/ripple handlers. Hold threshold is 500 ms; a configured double tap delays a single tap by 300 ms. During a command, duplicate actions are blocked. A safe toggle waits for the matching incoming entity state **and** service acknowledgment. Explicit momentary actions wait for acknowledgment only, without inventing a lasting ON state. A 12-second watchdog surfaces a concise error and **never retries automatically**. Check the device before retrying after a timeout; the request may still have reached HA.
 
+## Declarative dynamic rules (v0.3)
+
+Entity/action/pill configuration can use `presentation.name`, `presentation.icon`,
+`presentation.detail` (entity) or `presentation.state_display` (pill). These are
+bounded JSON expressions, **not JavaScript**. Literal fields remain compatible.
+The native editor exposes optional advanced object selectors and preserves rules
+when changing ordinary fields. Every incoming `hass` update resolves current
+cross-entity values; countdown expressions also refresh every 30 seconds while
+connected, without service calls, and stop their timer when disconnected.
+
+```yaml
+type: custom:kiosk-entity-card
+entity: light.example
+tap_action:
+  action: toggle
+action_rules:
+  tap_action:
+    - when:
+        op: defined
+        args: [{attribute: brightness}]
+      action: {action: more-info}
+presentation:
+  name:
+    op: map
+    args:
+      - {state: true}
+      - {"on": Active, "off": Inactive, default: Unknown}
+```
+
+First matching action rule wins; otherwise the ordinary gesture action/default
+applies. Rule keys are the same six body/icon tap/hold/double-tap keys. A present
+brightness attribute, **including zero**, selects more-info in this example;
+when absent the explicit toggle applies. All resolved command actions retain
+availability, confirmation, duplicate and pending guards. More-info remains
+accessible when the entity is unavailable; unavailable entities cannot actuate.
+
+Expression references: `{state: true}` reads this entity, `{entity: sensor.example,
+state: true}` reads another, `{attribute: brightness}` reads a direct attribute,
+and `{entity: sensor.example, last_changed: true}` reads a timestamp. Missing
+references return undefined; there is no object-path/global/code access.
+`{op: NAME, args: [...]}` operations:
+
+- `if`, `eq`, `ne`, `includes` (substring), `in` (value/list), `and`, `or`, `not`;
+- `defined` (not undefined), `number` (Number conversion), `finite` (numeric),
+  `round`, `gt`, `lt`;
+- `concat`, `capitalize`, `map` (value, literal mapping with `default` fallback);
+- `minutes` (timestamp to nonnegative remaining minutes, NaN if invalid),
+  `countdown` (timestamp, invalid fallback; `1h 01m left` / `5m left`).
+
+Conditions are evaluated lazily for `if`/`and`/`or`. Expressions are limited to
+24 levels and 100 arguments/rules; unknown operations and prototype attributes
+are rejected at configuration time. Strings such as old `[[[ JavaScript ]]]`
+are **never evaluated**: migrate them into explicit declarative expressions.
+Routine command progress/success banners are absent. Disabled controls and
+`aria-busy` represent pending work without changing layout; genuine entity
+activity and local failure messages remain visible.
+
 ## Appearance
 
 ```yaml

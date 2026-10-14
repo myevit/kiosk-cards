@@ -3,6 +3,7 @@ import { styleMap } from "lit/directives/style-map.js";
 import { kioskStyles } from "./design.js";
 import { confirmAction, nativeComponents } from "./native.js";
 import "./editor.js";
+import { evaluate, validateRules, hasClock } from "./rules.js";
 import type { Hass, Config, State, Action } from "./types.js";
 const toggleDomains = new Set(["light", "switch", "input_boolean"]);
 function fire(node: HTMLElement, name: string, detail: any) {
@@ -34,6 +35,14 @@ export class KioskBaseCard extends LitElement {
   busy = false;
   confirming = false;
   error = "";
+  private clock?: ReturnType<typeof setInterval>;
+  connectedCallback() { super.connectedCallback(); this.startClock(); }
+  private startClock() { clearInterval(this.clock); if (this.isConnected && this.config && hasClock(this.config)) this.clock = setInterval(() => this.requestUpdate(), 30000); }
+  protected presentation(key: "name" | "icon" | "detail" | "state_display") { const e = this.config.presentation?.[key]; return e === undefined ? undefined : evaluate(e, this.hass, this.config); }
+  protected resolvedAction(key: string, fallback: Action): Action {
+    const rule = this.config.action_rules?.[key]?.find((r: any) => evaluate(r.when, this.hass, this.config));
+    return rule?.action || fallback;
+  }
   private operation = 0;
   private expected?: string;
   private acknowledged = false;
@@ -41,17 +50,17 @@ export class KioskBaseCard extends LitElement {
   protected action(target: "icon" | "body", gesture = "tap"): Action {
     const key = (target === "icon" ? "icon_" : "") + gesture + "_action";
     return (
-      this.config[key] || {
+      this.resolvedAction(key, this.config[key] || {
         action:
           gesture === "tap"
             ? target === "icon" &&
-              toggleDomains.has((this.config.entity || "").split(".")[0])
+              this.available && toggleDomains.has((this.config.entity || "").split(".")[0])
               ? "toggle"
               : "more-info"
             : gesture === "hold"
               ? "more-info"
               : "none",
-      }
+      })
     );
   }
   protected async runAction(
@@ -161,6 +170,7 @@ export class KioskBaseCard extends LitElement {
   }
   disconnectedCallback() {
     super.disconnectedCallback();
+    clearInterval(this.clock);
     clearTimeout(this.watchdog);
     clearTimeout(this.holdTimer);
     clearTimeout(this.tapTimer);
@@ -217,6 +227,7 @@ export class KioskBaseCard extends LitElement {
   declare hass: Hass;
   declare config: Config;
   protected applyConfig(config: Config) {
+    validateRules(config);
     const large = config.var_large ?? config.variables?.var_large;
     if (large !== undefined && typeof large !== "boolean")
       throw Error("var_large must be a boolean");
@@ -229,6 +240,7 @@ export class KioskBaseCard extends LitElement {
     this.expected = undefined;
     this.error = "";
     this.config = { ...config };
+    this.startClock();
   }
   setConfig(config: Config) {
     if (!config.entity) throw new Error("Choose an entity");
@@ -253,13 +265,15 @@ export class KioskBaseCard extends LitElement {
   }
   protected get cardTitle() {
     return (
-      this.config.name ||
+      (this.presentation("name") ?? this.config.name) ||
       this.state?.attributes.friendly_name ||
       this.config.entity ||
       "Entity"
     );
   }
   protected get detail() {
+    const dynamic = this.presentation("detail");
+    if (dynamic !== undefined) return String(dynamic);
     if (this.config.detail !== undefined) return this.config.detail;
     const s = this.state;
     if (!s) return "Unavailable";
@@ -295,7 +309,7 @@ export class KioskBaseCard extends LitElement {
     return (this.config.var_large ?? this.config.variables?.var_large) === true;
   }
   protected get cardIcon() {
-    return this.config.icon;
+    return this.presentation("icon") ?? this.config.icon;
   }
   render() {
     if (!this.config || !this.hass) return nothing;
@@ -314,7 +328,7 @@ export class KioskBaseCard extends LitElement {
         @pointercancel=${this.pointerEnd}
         @pointerleave=${this.pointerEnd}
         aria-label=${`Icon — ${this.cardTitle}`}
-        ?disabled=${!this.available || this.busy || this.confirming}
+        ?disabled=${this.busy || this.confirming || (!this.available && ["none", "toggle", "perform-action", "call-service"].includes(this.action("icon").action))}
       >
         <span part="icon-circle"
           >${this.cardIcon ? html`<ha-icon .icon=${this.cardIcon}></ha-icon>` : html`<ha-state-icon .hass=${this.hass} .stateObj=${this.state} .stateColor=${false}></ha-state-icon>`}</span
@@ -358,7 +372,7 @@ export class KioskActionCard extends KioskBaseCard {
     return true;
   }
   protected get cardIcon() {
-    return this.config.icon || (!this.state ? "mdi:play" : undefined);
+    return (this.presentation("icon") ?? this.config.icon) || (!this.state ? "mdi:play" : undefined);
   }
   protected get active() {
     return true;
@@ -372,10 +386,10 @@ export class KioskActionCard extends KioskBaseCard {
   protected action(target: "icon" | "body", gesture = "tap"): Action {
     const key = (target === "icon" ? "icon_" : "") + gesture + "_action";
     return (
-      this.config[key] ||
+      this.resolvedAction(key, this.config[key] ||
       (target === "icon" && gesture === "tap"
         ? this.config.tap_action
-        : undefined) || { action: "none" }
+        : undefined) || { action: "none" })
     );
   }
 }

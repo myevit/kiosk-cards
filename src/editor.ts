@@ -98,6 +98,7 @@ export class KioskCardEditor extends LitElement {
         : [{ name: "var_large", selector: { boolean: {} } }]),
       ...(!room ? [text(pill ? "state_display" : "detail")] : []),
       ...interactions,
+      ...(!room ? [{ name: "dynamic", type: "expandable", flatten: true, schema: ["presentation", "action_rules"].map(name => ({ name, selector: { object: {} } })) }] : []),
       {
         name: "appearance",
         type: "expandable",
@@ -128,6 +129,9 @@ export class KioskCardEditor extends LitElement {
             state_display: "State text (optional override)",
             detail: "Detail (optional override)",
             interactions: "Interactions",
+            dynamic: "Declarative rules (advanced, optional)",
+            presentation: "Presentation expressions",
+            action_rules: "Conditional actions",
             appearance: "Appearance (optional)",
             icon_color: "Category color (CSS color)",
             background: "Off background",

@@ -109,7 +109,9 @@ for (const state of ["unknown", "unavailable"])
       },
       state,
     );
-    await expect(page.locator('[part="icon-target"]')).toBeDisabled();
+    // Default unavailable icon is diagnostics-only; explicit body toggle stays blocked.
+    await expect(page.locator('[part="icon-target"]')).toBeEnabled();
+    await page.locator('[part="icon-target"]').click();
     await expect(page.locator('[part="body-target"]')).toBeDisabled();
     expect(await page.evaluate(() => (window as any).calls.length)).toBe(0);
     await expect(page.locator('[part="detail"]')).toHaveText(

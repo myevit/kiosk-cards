@@ -71,6 +71,8 @@ export interface Config {
   show_state?: boolean;
   show_icon?: boolean;
   appearance?: Appearance;
+  presentation?: Partial<Record<"name" | "icon" | "detail" | "state_display", any>>;
+  action_rules?: Record<string, { when: any; action: Action }[]>;
   active_states?: string[];
   tap_action?: Action;
   icon_tap_action?: Action;
