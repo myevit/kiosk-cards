@@ -1,6 +1,6 @@
 # Kiosk Cards
 
-Reusable Home Assistant dashboard cards with a consistent touch-first design. One frontend module, four cards, no backend integration, button-card templates or card-mod required.
+Reusable Home Assistant dashboard cards with a consistent touch-first design. One frontend module, seven cards, no backend integration, button-card templates or card-mod required.
 
 ![Synthetic preview: entity off/on, action and room cards](docs/preview.png)
 
@@ -75,9 +75,55 @@ For special status wording, an optional literal `state_labels` mapping follows i
 
 The original pill template has **no Large variant**. Accordingly, pills do not offer a Large switch and reject `var_large: true` instead of inventing a scaled design; Large remains supported on entity/action/room cards.
 
+## Door and linked lock (v0.4)
+
+```yaml
+type: custom:kiosk-door-card
+entity: binary_sensor.example_door
+lock_entity: lock.example
+name: Example door
+var_large: true
+```
+
+Contact `on` or cover `open` means open; contact `off` or cover `closed` means closed. Door and lock states are reported independently, including `open / locked`: a locked latch does **not** imply the door is closed. Only closed **and** locked selects the inactive dark presentation. Unknown/unavailable observations remain explicit. The original four-state glyph mapping and fallback lock icon are retained. Standard/Large geometry matches the entity design.
+
+By default the body opens primary-entity more-info and the icon opens linked-lock more-info. There is **no implicit physical action**. For migration from a lock-primary card, use `entity: lock.example` with `door_entity: binary_sensor.example_door`; this keeps the original body more-info target. Explicit icon actions support the same native confirmation and availability safeguards as other cards. Preserve existing confirmations when migrating; do not introduce a toggle as a default.
+
+## Climate (v0.4)
+
+```yaml
+type: custom:kiosk-climate-card
+entity: climate.example
+name: Example climate
+var_large: true
+hvac_colors:
+  heating: "rgb(240,90,40)"
+  cooling: "rgb(84,190,240)"
+  default: black
+```
+
+The identity shows **current temperature**, not setpoint or an invented HVAC switch. Both targets default to native climate more-info, retaining HA's thermostat controls. Detail priority is Off → Fan On → heat/cool target and mode → low/high range → single target → current temperature and mode. Modes off/idle/standby/away are inactive; other modes retain the extracted active presentation. HVAC-action colors are optional; without an override, climate uses the theme accent rather than the general entity category color.
+
+Numbers use the HA locale language by default; values already use the entity's HA-configured temperature unit and the compact glyph stays `°`. `temperature_format: legacy` preserves literal original number formatting and original missing-attribute fallback semantics for exact template migrations. Standard climate is **68px** with a **20px** number; Large is **145px** with a **50px** number. Name/detail remain **18px/15px**. Large changes appearance only.
+
+## Passive temperature/status hero (v0.4)
+
+```yaml
+type: custom:kiosk-status-card
+entity: sensor.example_temperature
+status_entity: sensor.example_message
+status_active_entity: binary_sensor.example_status
+trend_entity: sensor.example_temperature_trend
+grid_options:
+  columns: 12
+  rows: auto
+```
+
+A genuine incoming `on` status swaps the rounded **112px** temperature display for a wrapping **20px** message on white; it is not a local command progress banner. Trend thresholds color only the degree glyph. Missing/unavailable numeric states stay honest. Height follows content and its HA wrapper; a full-width override preserves a hero's placement while the reusable default remains six columns. Body gestures default to normal more-info. No helper updates, status clears, climate commands or device calls occur from rendering.
+
 ## Editing and interactions
 
-All four cards appear in the card picker and include a visual editor built from native `ha-form` and HA entity/icon/area/action selectors. The editor changes configuration only; it never calls devices. Appearance settings are optional and collapsed by default.
+All seven cards appear in the card picker and include a visual editor built from native `ha-form` and HA entity/icon/area/action selectors. The editor changes configuration only; it never calls devices. Appearance settings are optional and collapsed by default.
 
 For entity/action/pill cards, supported options are `tap_action`, `hold_action`, `double_tap_action`, `icon_tap_action`, `icon_hold_action`, `icon_double_tap_action`. Supported HA actions: `none`, `more-info`, `toggle` (safe domains only), `perform-action`, legacy `call-service`, `navigate`, `url`, `assist`, `fire-dom-event`. Service actions support `data`/legacy `service_data`, `target`, and HA-style `confirmation` (including user exemptions). Confirmation is hosted by HA's native `ha-dialog` through `show-dialog`; no custom overlay and no more-info replacement.
 
@@ -156,7 +202,7 @@ Stable CSS variables: `--kiosk-height`, `--kiosk-radius`, `--kiosk-background`, 
 
 ## Large tiles
 
-Turn on **Large** in the native visual editor for entity, action or room cards. Standard is the default. The editor writes the top-level boolean `var_large`; YAML is optional:
+Turn on **Large** in the native visual editor for entity, action, room, door or climate cards. Standard is the default. The editor writes the top-level boolean `var_large`; YAML is optional:
 
 ```yaml
 type: custom:kiosk-entity-card
@@ -168,7 +214,7 @@ Large matches the extracted stacked reference: **146px height**, top-left **45px
 
 ## Sections layout
 
-All four cards report **`{ columns: 6, rows: "auto" }` by default**; entity/action/room retain those defaults in Large mode, while pills stay compact. You do not need to repeat `grid_options` in YAML or stub configurations. HA merges explicit `grid_options` after the card defaults, so custom `columns: 12`, `rows: "auto"` or intentionally chosen numeric row counts win. The visual editor preserves these overrides; it never forces six columns or a fixed row height. Standard HA visibility conditions are retained. Avoid manually forcing a row height shorter than the rendered card.
+All seven cards report **`{ columns: 6, rows: "auto" }` by default**; entity/action/room retain those defaults in Large mode, while pills stay compact. You do not need to repeat `grid_options` in YAML or stub configurations. HA merges explicit `grid_options` after the card defaults, so custom `columns: 12`, `rows: "auto"` or intentionally chosen numeric row counts win. The visual editor preserves these overrides; it never forces six columns or a fixed row height. Standard HA visibility conditions are retained. Avoid manually forcing a row height shorter than the rendered card.
 
 This uses the native `LovelaceGridOptions` API, not a global HA patch. Omitted grid configuration, custom overrides and native 8px section gaps are tested against HA frontend 20260930.3 at 320/640px.
 
@@ -180,7 +226,7 @@ The source package exports `KioskBaseCard`, concrete cards, types, `kioskStyles`
 import { kioskStyles, designTokens } from "@myevit/kiosk-cards/design";
 ```
 
-Install from this tagged repository (`npm install github:myevit/kiosk-cards#v0.2.0`), or build/pack locally. There is no npm registry publication. Do not load multiple versions of the browser resource simultaneously; registration guards prevent duplicate-definition exceptions, but the first loaded version wins until the page reloads.
+Install from this tagged repository (`npm install github:myevit/kiosk-cards#v0.4.0`), or build/pack locally. There is no npm registry publication. Do not load multiple versions of the browser resource simultaneously; registration guards prevent duplicate-definition exceptions, but the first loaded version wins until the page reloads.
 
 ## Development and evidence
 

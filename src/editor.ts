@@ -25,6 +25,9 @@ export class KioskCardEditor extends LitElement {
     const room = this.config.type === "custom:kiosk-room-card";
     const action = this.config.type === "custom:kiosk-action-card";
     const pill = this.config.type === "custom:kiosk-pill-card";
+    const door = this.config.type === "custom:kiosk-door-card";
+    const climate = this.config.type === "custom:kiosk-climate-card";
+    const status = this.config.type === "custom:kiosk-status-card";
     const identity = room
       ? [
           { name: "area", selector: { area: {} } },
@@ -43,7 +46,7 @@ export class KioskCardEditor extends LitElement {
       : [
           entity(
             "entity",
-            action ? { filter: { domain: ["script", "scene", "button"] } } : {},
+            action ? { filter: { domain: ["script", "scene", "button"] } } : door ? {filter:{domain:["binary_sensor","cover","lock"]}} : climate ? {filter:{domain:"climate"}} : {},
           ),
           text("name"),
           {
@@ -90,12 +93,15 @@ export class KioskCardEditor extends LitElement {
         ];
     return [
       ...identity,
+      ...(door ? [entity('door_entity',{filter:{domain:['binary_sensor','cover']}}),entity('lock_entity',{filter:{domain:'lock'}})] : []),
+      ...(climate ? [{name:'temperature_format',selector:{select:{options:['locale','legacy']}}},{name:'hvac_colors',selector:{object:{}}}] : []),
+      ...(status ? [entity('status_entity'),entity('status_active_entity',{filter:{domain:'binary_sensor'}}),entity('trend_entity',{filter:{domain:'sensor'}})] : []),
       ...(pill
         ? ["show_name", "show_state", "show_icon"].map((name) => ({
             name,
             selector: { boolean: {} },
           }))
-        : [{ name: "var_large", selector: { boolean: {} } }]),
+        : status ? [] : [{ name: "var_large", selector: { boolean: {} } }]),
       ...(!room ? [text(pill ? "state_display" : "detail")] : []),
       ...interactions,
       ...(!room ? [{ name: "dynamic", type: "expandable", flatten: true, schema: ["presentation", "action_rules"].map(name => ({ name, selector: { object: {} } })) }] : []),
@@ -114,7 +120,14 @@ export class KioskCardEditor extends LitElement {
       ? "Background"
       : (
           {
-            entity: "Entity",
+            entity: "Primary entity (body more-info target)",
+            door_entity: "Door contact or cover (optional override)",
+            lock_entity: "Linked lock",
+            temperature_format: "Temperature number format",
+            hvac_colors: "HVAC action colors (optional)",
+            status_entity: "Status message sensor",
+            status_active_entity: "Status active sensor",
+            trend_entity: "Temperature trend sensor",
             name: "Name",
             icon: "Icon",
             area: "Area",
@@ -168,7 +181,7 @@ export class KioskCardEditor extends LitElement {
       ></ha-form>
       <p>
         Pills stay compact and default to more-info on both targets. Large
-        applies only to entity, action and room cards. Default appearance
+        applies only to entity, action, room, door and climate cards. Default appearance
         follows the kiosk design. Entity icon taps control only lights, switches
         and input booleans. Room controls only navigate; action cards require an
         explicit action.

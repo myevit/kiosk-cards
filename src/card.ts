@@ -311,6 +311,10 @@ export class KioskBaseCard extends LitElement {
   protected get cardIcon() {
     return this.presentation("icon") ?? this.config.icon;
   }
+  protected get surfaceStyles(): Record<string, string | undefined> { return {}; }
+  protected get iconContent() {
+    return this.cardIcon ? html`<ha-icon .icon=${this.cardIcon}></ha-icon>` : html`<ha-state-icon .hass=${this.hass} .stateObj=${this.state} .stateColor=${false}></ha-state-icon>`;
+  }
   render() {
     if (!this.config || !this.hass) return nothing;
     const a = this.config.appearance;
@@ -318,7 +322,7 @@ export class KioskBaseCard extends LitElement {
       part="surface"
       aria-busy=${String(this.busy)}
       class=${[this.active ? "active" : "", !this.available ? "unavailable" : "", this.isAction ? "action" : "", this.large ? "large" : ""].join(" ")}
-      style=${styleMap({ "--kiosk-icon-color": a?.icon_color, "--kiosk-default-icon-color": this.config.entity?.startsWith("light.") ? "var(--accent-color,#3bc8ce)" : undefined, "--kiosk-background": a?.background, "--kiosk-active-background": a?.active_background, "--kiosk-radius": a?.radius })}
+      style=${styleMap({ "--kiosk-icon-color": a?.icon_color, "--kiosk-default-icon-color": this.config.entity?.startsWith("light.") ? "var(--accent-color,#3bc8ce)" : undefined, "--kiosk-background": a?.background, "--kiosk-active-background": a?.active_background, "--kiosk-radius": a?.radius, ...this.surfaceStyles })}
     >
       <button
         part="icon-target"
@@ -331,7 +335,7 @@ export class KioskBaseCard extends LitElement {
         ?disabled=${this.busy || this.confirming || (!this.available && ["none", "toggle", "perform-action", "call-service"].includes(this.action("icon").action))}
       >
         <span part="icon-circle"
-          >${this.cardIcon ? html`<ha-icon .icon=${this.cardIcon}></ha-icon>` : html`<ha-state-icon .hass=${this.hass} .stateObj=${this.state} .stateColor=${false}></ha-state-icon>`}</span
+          >${this.iconContent}</span
         >
       </button>
       <button

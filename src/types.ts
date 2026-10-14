@@ -83,6 +83,13 @@ export interface Config {
   area?: string;
   navigation_path?: string;
   temperature_entity?: string;
+  door_entity?: string;
+  lock_entity?: string;
+  temperature_format?: 'locale' | 'legacy';
+  hvac_colors?: Record<string,string>;
+  status_entity?: string;
+  status_active_entity?: string;
+  trend_entity?: string;
   occupancy_entity?: string;
   light_entities?: string[];
   grid_options?: Record<string, any>;

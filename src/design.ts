@@ -237,6 +237,29 @@ export const pillStyles = css`
     flex: 0 0 0px;
   }
 `;
+/** Temperature identity variant extracted from the climate reference. */
+export const climateStyles = css`${kioskStyles}
+ [part="surface"] { padding:10px 12px 10px 10px; --kiosk-title-size:18px; }
+ [part="icon-target"] { flex-basis:48px; }
+ [part="icon-circle"] { background:transparent; width:48px; height:48px; border-radius:0; opacity:1; }
+ .active [part="icon-circle"], .unavailable [part="icon-circle"] { background:transparent; opacity:1; }
+ [part="temperature"] { font-size:20px; font-weight:600; line-height:normal; color:var(--kiosk-temperature-color,var(--accent-color)); }
+ [part="title"] { line-height:21px; }
+ .large [part="icon-target"] { flex-basis:58px; min-height:58px; padding:0; }
+ .large [part="icon-circle"] { width:100%; height:58px; justify-content:flex-start; }
+ .large [part="temperature"] { font-size:50px; }
+ .large [part="body-target"] { padding:0 0 2px 0; }
+`;
+/** Full-height passive temperature/status hero using the shared surface tokens. */
+export const statusStyles = css`${kioskStyles}
+ :host { height:100%; }
+ [part="surface"] { height:100%; padding:16px; border:none; }
+ [part="body-target"] { display:flex; flex-direction:row; min-height:0; align-items:center; justify-content:center; text-align:center; width:100%; }
+ [part="value"], [part="degree"], [part="pad"] { font-size:112px; font-weight:700; line-height:1; color:white; }
+ [part="pad"] { visibility:hidden; }
+ [part="status"] { width:100%; font-size:20px; font-weight:var(--ha-font-weight-normal,400); line-height:1.35; color:white; white-space:normal; }
+ .active [part="status"] { color:black; }
+`;
 export const designTokens = Object.freeze({
   height: 69,
   actionHeight: 68,

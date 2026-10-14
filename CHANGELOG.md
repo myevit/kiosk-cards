@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0
+
+- Door/contact/cover plus independent linked-lock observations, original icon/state priority and explicit native action overrides.
+- Climate current-temperature glyph, target/range/mode detail priority, locale or literal migration formatting, optional HVAC action colors and extracted standard/Large layout.
+- Passive temperature/status hero with genuine cross-entity activity, threshold-colored degree glyph and content-based native layout.
+- Seven picker types and native visual selectors; door/climate Large and six-column auto-row defaults, explicit grid overrides preserved.
+- Synthetic regression coverage and isolated installed-frontend reference/state/geometry/dialog gates; no backend changes or implicit physical actions.
+
+## 0.3.0
+
+- Bounded declarative presentation expressions and conditional actions for state, cross-entity and countdown consumers.
+- Quiet pending operations with disabled controls and aria-busy, without routine command banners.
+
 ## 0.2.0
 
 - Fourth reusable type: compact kiosk pill cards, also registered and verified as native HA custom badges.

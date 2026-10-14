@@ -6,6 +6,15 @@ import { KioskRoomCard } from "./room.js";
 export { KioskRoomCard } from "./room.js";
 import { KioskPillCard } from "./pill.js";
 export { KioskPillCard } from "./pill.js";
+import { KioskDoorCard } from "./door.js";
+export { KioskDoorCard } from "./door.js";
+if (!customElements.get("kiosk-door-card")) customElements.define("kiosk-door-card", KioskDoorCard);
+import { KioskClimateCard } from "./climate.js";
+export { KioskClimateCard } from "./climate.js";
+if (!customElements.get("kiosk-climate-card")) customElements.define("kiosk-climate-card", KioskClimateCard);
+import { KioskStatusCard } from "./status.js";
+export { KioskStatusCard } from "./status.js";
+if (!customElements.get("kiosk-status-card")) customElements.define("kiosk-status-card", KioskStatusCard);
 export { KioskCardEditor } from "./editor.js";
 if (!customElements.get("kiosk-entity-card"))
   customElements.define("kiosk-entity-card", KioskEntityCard);
@@ -33,6 +42,9 @@ for (const [type, name, description] of [
   ],
   ["kiosk-action-card", "Kiosk action", "Explicit momentary action tile"],
   ["kiosk-room-card", "Kiosk room", "Room summary and navigation"],
+  ["kiosk-door-card", "Kiosk door", "Independent door and linked lock observations"],
+  ["kiosk-climate-card", "Kiosk climate", "Current temperature and HVAC mode"],
+  ["kiosk-status-card", "Kiosk status", "Passive temperature and cross-entity status display"],
   [
     "kiosk-pill-card",
     "Kiosk pill",
