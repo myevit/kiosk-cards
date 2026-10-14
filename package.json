@@ -1,0 +1,30 @@
+{
+  "name": "@myevit/kiosk-cards",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "lib",
+    "src",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "exports": {
+    ".": "./lib/index.js",
+    "./design": "./lib/design.js"
+  },
+  "scripts": {
+    "build": "tsc --noEmit && esbuild src/index.ts --bundle --format=esm --target=es2022 --minify --outfile=dist/kiosk-cards.js && tsc --emitDeclarationOnly && esbuild src/*.ts --format=esm --target=es2022 --outdir=lib",
+    "test": "playwright test",
+    "check": "tsc --noEmit",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "lit": "^3.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "typescript": "^5.9.0",
+    "esbuild": "^0.25.0"
+  }
+}
