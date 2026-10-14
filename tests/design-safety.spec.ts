@@ -70,7 +70,7 @@ for (const width of [320, 640])
       bodyHeight: 69,
       iconHeight: 69,
       circleWidth: 45,
-      grid: { columns: 6, min_columns: 3, min_rows: 1 },
+      grid: { columns: 6, rows: "auto" },
       overflow: false,
     });
   });

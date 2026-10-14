@@ -88,6 +88,7 @@ export class KioskCardEditor extends LitElement {
         ];
     return [
       ...identity,
+      { name: "var_large", selector: { boolean: {} } },
       ...(!room ? [text("detail")] : []),
       ...interactions,
       {
@@ -110,6 +111,7 @@ export class KioskCardEditor extends LitElement {
         temperature_entity: "Temperature sensor",
         occupancy_entity: "Occupancy sensor",
         light_entities: "Lights (optional override)",
+        var_large: "Large",
         detail: "Detail (optional override)",
         interactions: "Interactions",
         appearance: "Appearance (optional)",
@@ -141,7 +143,7 @@ export class KioskCardEditor extends LitElement {
     if (!this.config || !this.hass) return nothing;
     return html`<ha-form
         .hass=${this.hass}
-        .data=${this.config}
+        .data=${{ ...this.config, var_large: this.config.var_large ?? this.config.variables?.var_large ?? false }}
         .schema=${this.schema}
         .computeLabel=${this.label}
         @value-changed=${this.change}

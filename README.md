@@ -80,9 +80,23 @@ Defaults reproduce a 69px entity/room row, 68px action row, 45px circle, 25px gl
 
 Stable CSS variables: `--kiosk-height`, `--kiosk-radius`, `--kiosk-background`, `--kiosk-active-background`, `--kiosk-icon-color`, `--kiosk-off-title`, `--kiosk-active-title`, `--kiosk-off-detail`, `--kiosk-active-detail`, `--kiosk-off-circle`, `--kiosk-glyph`, `--kiosk-shadow`, `--kiosk-title-size`, `--kiosk-identity-width`. Shadow parts: `surface`, `icon-target`, `icon-circle`, `body-target`, `title`, `detail`, `feedback`. No private HA/button-card class names are styling dependencies.
 
+## Large tiles
+
+Turn on **Large** in the native visual editor for any of the three card types. Standard is the default. The editor writes the top-level boolean `var_large`; YAML is optional:
+
+```yaml
+type: custom:kiosk-entity-card
+entity: light.example
+var_large: true
+```
+
+Large matches the extracted stacked reference: **146px height**, top-left **45px circle**, unchanged **25px glyph** and title/detail font sizes, with the title beneath the icon. It is not a doubled icon/font scale. Entity/room text begins 14px from the left, title at 96px and detail at 116px; action title begins at 111px. State colors, isolated actions and keyboard controls are unchanged. Editing size does not send device commands. For migration, `variables.var_large` is accepted as a boolean alias; explicit top-level `var_large` (including `false`) wins. Other legacy template variables are not interpreted.
+
 ## Sections layout
 
-The cards report an automatic height and minimum one row, not fixed `rows: 1`. Standard HA `grid_options`, visibility conditions and section columns are retained by the editor. Choose grid columns in HA; avoid forcing a row height shorter than the rendered card.
+All three cards report **`{ columns: 6, rows: "auto" }` by default**, in both standard and Large mode. You do not need to repeat `grid_options` in YAML or stub configurations. HA merges explicit `grid_options` after the card defaults, so custom `columns: 12`, `rows: "auto"` or intentionally chosen numeric row counts win. The visual editor preserves these overrides; it never forces six columns or a fixed row height. Standard HA visibility conditions are retained. Avoid manually forcing a row height shorter than the rendered card.
+
+This uses the native `LovelaceGridOptions` API, not a global HA patch. Omitted grid configuration, custom overrides and native 8px section gaps are tested against HA frontend 20260930.3 at 320/640px.
 
 ## Reuse in other custom cards
 
@@ -92,7 +106,7 @@ The source package exports `KioskBaseCard`, concrete cards, types, `kioskStyles`
 import { kioskStyles, designTokens } from "@myevit/kiosk-cards/design";
 ```
 
-Install from this tagged repository (`npm install github:myevit/kiosk-cards#v0.1.0`), or build/pack locally. There is no npm registry publication. Do not load multiple versions of the browser resource simultaneously; registration guards prevent duplicate-definition exceptions, but the first loaded version wins until the page reloads.
+Install from this tagged repository (`npm install github:myevit/kiosk-cards#v0.1.1`), or build/pack locally. There is no npm registry publication. Do not load multiple versions of the browser resource simultaneously; registration guards prevent duplicate-definition exceptions, but the first loaded version wins until the page reloads.
 
 ## Development and evidence
 

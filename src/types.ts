@@ -59,6 +59,8 @@ export interface Appearance {
 }
 export interface Config {
   type: string;
+  var_large?: boolean;
+  variables?: { var_large?: boolean; [key: string]: unknown };
   entity?: string;
   name?: string;
   icon?: string;

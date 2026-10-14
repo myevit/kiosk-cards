@@ -217,6 +217,9 @@ export class KioskBaseCard extends LitElement {
   declare hass: Hass;
   declare config: Config;
   protected applyConfig(config: Config) {
+    const large = config.var_large ?? config.variables?.var_large;
+    if (large !== undefined && typeof large !== "boolean")
+      throw Error("var_large must be a boolean");
     clearTimeout(this.watchdog);
     clearTimeout(this.holdTimer);
     clearTimeout(this.tapTimer);
@@ -232,10 +235,10 @@ export class KioskBaseCard extends LitElement {
     this.applyConfig(config);
   }
   getCardSize() {
-    return 1.38;
+    return this.large ? 3 : 1.38;
   }
   getGridOptions() {
-    return { columns: 6, min_columns: 3, min_rows: 1 };
+    return { columns: 6, rows: "auto" as const };
   }
   protected get state(): State | undefined {
     return this.hass?.states[this.config?.entity || ""];
@@ -288,6 +291,9 @@ export class KioskBaseCard extends LitElement {
   protected get isAction() {
     return false;
   }
+  protected get large() {
+    return (this.config.var_large ?? this.config.variables?.var_large) === true;
+  }
   protected get cardIcon() {
     return this.config.icon;
   }
@@ -296,7 +302,7 @@ export class KioskBaseCard extends LitElement {
     const a = this.config.appearance;
     return html`<ha-card
       part="surface"
-      class=${[this.active ? "active" : "", !this.available ? "unavailable" : "", this.isAction ? "action" : ""].join(" ")}
+      class=${[this.active ? "active" : "", !this.available ? "unavailable" : "", this.isAction ? "action" : "", this.large ? "large" : ""].join(" ")}
       style=${styleMap({ "--kiosk-icon-color": a?.icon_color, "--kiosk-default-icon-color": this.config.entity?.startsWith("light.") ? "var(--accent-color,#3bc8ce)" : undefined, "--kiosk-background": a?.background, "--kiosk-active-background": a?.active_background, "--kiosk-radius": a?.radius })}
     >
       <button

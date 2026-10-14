@@ -143,10 +143,37 @@ export const kioskStyles = css`
   .action [part="title"] {
     line-height: 21px;
   }
+  .large {
+    --kiosk-height: 146px;
+    flex-direction: column;
+  }
+  .large [part="icon-target"] {
+    flex: 0 0 69px;
+    width: 100%;
+    justify-content: flex-start;
+    padding-left: 10.5px;
+    box-sizing: border-box;
+  }
+  .large [part="body-target"] {
+    justify-content: flex-end;
+    padding: 0 0 12px 14px;
+    box-sizing: border-box;
+  }
+  .large.action [part="icon-target"] {
+    flex-basis: 68px;
+    padding-left: 11.5px;
+  }
+  .large.action [part="icon-circle"] {
+    transform: none;
+  }
+  .large.action [part="body-target"] {
+    padding-bottom: 14px;
+  }
 `;
 export const designTokens = Object.freeze({
   height: 69,
   actionHeight: 68,
+  largeHeight: 146,
   iconDiameter: 45,
   glyphSize: 25,
   titleSize: 17,
