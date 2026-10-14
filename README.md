@@ -1,6 +1,6 @@
 # Kiosk Cards
 
-Reusable Home Assistant dashboard cards with a consistent touch-first design. One frontend module, three cards, no backend integration, button-card templates or card-mod required.
+Reusable Home Assistant dashboard cards with a consistent touch-first design. One frontend module, four cards, no backend integration, button-card templates or card-mod required.
 
 ![Synthetic preview: entity off/on, action and room cards](docs/preview.png)
 
@@ -22,7 +22,7 @@ type: custom:kiosk-entity-card
 entity: light.example
 ```
 
-The icon toggles only `light`, `switch`, `input_boolean` and `fan`. The body opens Home Assistant's normal more-info dialog, retaining brightness and device-specific controls. Locks, covers, alarm panels, scripts, scenes and buttons never receive an implicit toggle or service call. Hold opens more-info by default. Double tap defaults to no action.
+The icon toggles only `light`, `switch` and `input_boolean`. The body opens Home Assistant's normal more-info dialog, retaining brightness and device-specific controls. Locks, covers, alarm panels, scripts, scenes and buttons never receive an implicit toggle or service call. Hold opens more-info by default. Double tap defaults to no action.
 
 ON uses a white tile, black title, gray detail and a colored circle with white glyph. OFF uses a translucent dark tile, theme title color, muted detail and a darker circle with white glyph. State always comes from `hass.states`, not from optimistic animation. Unknown/unavailable entities cannot send commands.
 
@@ -58,11 +58,28 @@ light_entities:
 
 Room cards use HA's cached entity/device/area registries: explicit entity area overrides device area, hidden/disabled entities are excluded, and explicit entity lists take precedence. Temperature, occupancy and light summaries are read-only. Tap navigates **only**; room cards never toggle a whole area. Unavailable lights are counted explicitly, never treated as confirmed off. If multiple eligible sensors exist, use explicit overrides rather than relying on registry order.
 
+## Compact top pills / native badges
+
+```yaml
+type: custom:kiosk-pill-card
+entity: sensor.example_status
+```
+
+The same type works in a view's native `badges:` list and in ordinary `cards:`/Sections. It is registered in both HA pickers and verified through the actual native `hui-badge` loader; no separate badge backend or alternate tag is needed. HA badge layout ignores card grid options and uses intrinsic capsule sizing.
+
+Pills reproduce the extracted compact status style: **35px** with both text lines, **32px** with an icon and one/no text line, **18px** radius, **4px 12px** padding, **24px** icon, **10px** regular name and **14px/800-weight** state. Default width is clamped to **140–180px**, preserving ellipsis for long labels. The neutral translucent white background and theme accent icon remain consistent across ON/OFF/unavailable states; incoming state text changes without inventing an active command state.
+
+The native editor offers entity, name, icon, **Show name**, **Show state**, **Show icon**, optional literal `state_display`, appearance and interactions. Both icon and body default to more-info, **even for switches or locks**; no implicit pill toggle. Deliberately configured quick toggles retain the same safe-domain allowlist, confirmation, unavailable-state protection and no-auto-retry safeguards as the entity card. Padding and keyboard taps are isolated from parent click/ripple handlers. The compact visual height is retained rather than silently expanded to 68px or 44px.
+
+For special status wording, an optional literal `state_labels` mapping follows incoming entity state, with `default` as its fallback. This does not evaluate JavaScript or private template expressions. Pill backgrounds can be overridden with `appearance.background`, for example for a warning capsule. Existing HA visibility conditions are preserved.
+
+The original pill template has **no Large variant**. Accordingly, pills do not offer a Large switch and reject `var_large: true` instead of inventing a scaled design; Large remains supported on entity/action/room cards.
+
 ## Editing and interactions
 
-All three cards appear in the card picker and include a visual editor built from native `ha-form` and HA entity/icon/area/action selectors. The editor changes configuration only; it never calls devices. Appearance settings are optional and collapsed by default.
+All four cards appear in the card picker and include a visual editor built from native `ha-form` and HA entity/icon/area/action selectors. The editor changes configuration only; it never calls devices. Appearance settings are optional and collapsed by default.
 
-For entity/action cards, supported options are `tap_action`, `hold_action`, `double_tap_action`, `icon_tap_action`, `icon_hold_action`, `icon_double_tap_action`. Supported HA actions: `none`, `more-info`, `toggle` (safe domains only), `perform-action`, legacy `call-service`, `navigate`, `url`, `assist`, `fire-dom-event`. Service actions support `data`/legacy `service_data`, `target`, and HA-style `confirmation` (including user exemptions). Confirmation is hosted by HA's native `ha-dialog` through `show-dialog`; no custom overlay and no more-info replacement.
+For entity/action/pill cards, supported options are `tap_action`, `hold_action`, `double_tap_action`, `icon_tap_action`, `icon_hold_action`, `icon_double_tap_action`. Supported HA actions: `none`, `more-info`, `toggle` (safe domains only), `perform-action`, legacy `call-service`, `navigate`, `url`, `assist`, `fire-dom-event`. Service actions support `data`/legacy `service_data`, `target`, and HA-style `confirmation` (including user exemptions). Confirmation is hosted by HA's native `ha-dialog` through `show-dialog`; no custom overlay and no more-info replacement.
 
 Icon and body are separate keyboard-accessible buttons. Taps and holds are isolated from parent click/ripple handlers. Hold threshold is 500 ms; a configured double tap delays a single tap by 300 ms. During a command, duplicate actions are blocked. A safe toggle waits for the matching incoming entity state **and** service acknowledgment. Explicit momentary actions wait for acknowledgment only, without inventing a lasting ON state. A 12-second watchdog surfaces a concise error and **never retries automatically**. Check the device before retrying after a timeout; the request may still have reached HA.
 
@@ -82,7 +99,7 @@ Stable CSS variables: `--kiosk-height`, `--kiosk-radius`, `--kiosk-background`, 
 
 ## Large tiles
 
-Turn on **Large** in the native visual editor for any of the three card types. Standard is the default. The editor writes the top-level boolean `var_large`; YAML is optional:
+Turn on **Large** in the native visual editor for entity, action or room cards. Standard is the default. The editor writes the top-level boolean `var_large`; YAML is optional:
 
 ```yaml
 type: custom:kiosk-entity-card
@@ -94,7 +111,7 @@ Large matches the extracted stacked reference: **146px height**, top-left **45px
 
 ## Sections layout
 
-All three cards report **`{ columns: 6, rows: "auto" }` by default**, in both standard and Large mode. You do not need to repeat `grid_options` in YAML or stub configurations. HA merges explicit `grid_options` after the card defaults, so custom `columns: 12`, `rows: "auto"` or intentionally chosen numeric row counts win. The visual editor preserves these overrides; it never forces six columns or a fixed row height. Standard HA visibility conditions are retained. Avoid manually forcing a row height shorter than the rendered card.
+All four cards report **`{ columns: 6, rows: "auto" }` by default**; entity/action/room retain those defaults in Large mode, while pills stay compact. You do not need to repeat `grid_options` in YAML or stub configurations. HA merges explicit `grid_options` after the card defaults, so custom `columns: 12`, `rows: "auto"` or intentionally chosen numeric row counts win. The visual editor preserves these overrides; it never forces six columns or a fixed row height. Standard HA visibility conditions are retained. Avoid manually forcing a row height shorter than the rendered card.
 
 This uses the native `LovelaceGridOptions` API, not a global HA patch. Omitted grid configuration, custom overrides and native 8px section gaps are tested against HA frontend 20260930.3 at 320/640px.
 
@@ -106,7 +123,7 @@ The source package exports `KioskBaseCard`, concrete cards, types, `kioskStyles`
 import { kioskStyles, designTokens } from "@myevit/kiosk-cards/design";
 ```
 
-Install from this tagged repository (`npm install github:myevit/kiosk-cards#v0.1.1`), or build/pack locally. There is no npm registry publication. Do not load multiple versions of the browser resource simultaneously; registration guards prevent duplicate-definition exceptions, but the first loaded version wins until the page reloads.
+Install from this tagged repository (`npm install github:myevit/kiosk-cards#v0.2.0`), or build/pack locally. There is no npm registry publication. Do not load multiple versions of the browser resource simultaneously; registration guards prevent duplicate-definition exceptions, but the first loaded version wins until the page reloads.
 
 ## Development and evidence
 

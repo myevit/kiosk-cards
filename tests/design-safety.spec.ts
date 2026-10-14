@@ -113,7 +113,44 @@ test("keyboard body target opens more-info once without quick actuation", async 
   ]);
   expect(await page.evaluate(() => (window as any).calls.length)).toBe(0);
 });
-for (const domain of ["light", "switch", "input_boolean", "fan"])
+test("fan defaults to more-info and refuses an explicit toggle outside the allowlist", async ({
+  page,
+}) => {
+  await mount(page, "kiosk-entity-card", { entity: "fan.example" });
+  expect(
+    await page.evaluate(async () => {
+      const w = window as any;
+      const editor = await w.card.constructor.getConfigElement();
+      editor.setConfig(w.card.config);
+      editor.hass = w.hass;
+      document.body.append(editor);
+      await editor.updateComplete;
+      return editor.shadowRoot
+        .querySelector("ha-form")
+        .schema.find((s: any) => s.name === "interactions")
+        .schema.find((s: any) => s.name === "icon_tap_action").selector
+        .ui_action.default_action;
+    }),
+  ).toBe("more-info");
+  await page.locator('[part="icon-target"]').click();
+  expect(await page.evaluate(() => (window as any).calls)).toEqual([]);
+  expect(await page.evaluate(() => (window as any).events)).toEqual([
+    { entityId: "fan.example" },
+  ]);
+  await page.evaluate(() =>
+    (window as any).card.setConfig({
+      type: "custom:kiosk-entity-card",
+      entity: "fan.example",
+      icon_tap_action: { action: "toggle" },
+    }),
+  );
+  await page.locator('[part="icon-target"]').click();
+  expect(await page.evaluate(() => (window as any).calls)).toEqual([]);
+  await expect(page.locator('[part="feedback"]')).toHaveText(
+    "Choose an explicit action for this device.",
+  );
+});
+for (const domain of ["light", "switch", "input_boolean"])
   test(`${domain} safe toggle uses its own domain and explicit next state`, async ({
     page,
   }) => {

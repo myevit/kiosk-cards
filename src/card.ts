@@ -4,7 +4,7 @@ import { kioskStyles } from "./design.js";
 import { confirmAction, nativeComponents } from "./native.js";
 import "./editor.js";
 import type { Hass, Config, State, Action } from "./types.js";
-const toggleDomains = new Set(["light", "switch", "input_boolean", "fan"]);
+const toggleDomains = new Set(["light", "switch", "input_boolean"]);
 function fire(node: HTMLElement, name: string, detail: any) {
   node.dispatchEvent(
     new CustomEvent(name, { detail, bubbles: true, composed: true }),
@@ -170,7 +170,7 @@ export class KioskBaseCard extends LitElement {
   private holdTimer?: ReturnType<typeof setTimeout>;
   private tapTimer?: ReturnType<typeof setTimeout>;
   private held = false;
-  private pointerDown(target: "icon" | "body", e: PointerEvent) {
+  protected pointerDown(target: "icon" | "body", e: PointerEvent) {
     e.stopPropagation();
     if (e.button !== 0) return;
     this.held = false;
@@ -181,11 +181,11 @@ export class KioskBaseCard extends LitElement {
       void this.runAction(target, e, "hold");
     }, 500);
   }
-  private pointerEnd(e: Event) {
+  protected pointerEnd(e: Event) {
     e.stopPropagation();
     clearTimeout(this.holdTimer);
   }
-  private tap(target: "icon" | "body", e: MouseEvent) {
+  protected tap(target: "icon" | "body", e: MouseEvent) {
     e.stopPropagation();
     if (this.held) {
       this.held = false;
@@ -234,7 +234,7 @@ export class KioskBaseCard extends LitElement {
     if (!config.entity) throw new Error("Choose an entity");
     this.applyConfig(config);
   }
-  getCardSize() {
+  getCardSize(): number {
     return this.large ? 3 : 1.38;
   }
   getGridOptions() {

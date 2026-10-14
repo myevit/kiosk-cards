@@ -49,12 +49,10 @@ test("entity renders standard OFF geometry and distinct ON presentation", async 
     }),
   ).toBe(true);
   await expect(page.locator('[part="title"]')).toHaveText("Synthetic lamp");
-  const off = await page
-    .locator('[part="surface"]')
-    .evaluate((e) => ({
-      height: e.getBoundingClientRect().height,
-      bg: getComputedStyle(e).backgroundColor,
-    }));
+  const off = await page.locator('[part="surface"]').evaluate((e) => ({
+    height: e.getBoundingClientRect().height,
+    bg: getComputedStyle(e).backgroundColor,
+  }));
   expect(off).toEqual({ height: 69, bg: "rgba(0, 0, 0, 0.3)" });
   expect(
     await page

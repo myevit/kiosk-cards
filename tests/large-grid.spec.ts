@@ -16,7 +16,7 @@ async function setup(page: any, tag: string, config: any = {}, state = "off") {
           },
           "script.example": {
             entity_id: "script.example",
-            state: "off",
+            state,
             attributes: { friendly_name: "Synthetic action" },
           },
         },
@@ -47,7 +47,7 @@ async function setup(page: any, tag: string, config: any = {}, state = "off") {
   );
 }
 for (const width of [320, 640])
-  for (const state of ["off", "on"])
+  for (const state of ["off", "on", "unknown", "unavailable"])
     for (const tag of [
       "kiosk-entity-card",
       "kiosk-action-card",
@@ -93,7 +93,12 @@ for (const width of [320, 640])
           circleX: tag === "kiosk-action-card" ? 11.5 : 10.5,
           circleY: tag === "kiosk-action-card" ? 11.5 : 12,
           titleX: 14,
-          titleY: tag === "kiosk-action-card" ? 111 : 96,
+          titleY:
+            tag === "kiosk-action-card"
+              ? ["unknown", "unavailable"].includes(state)
+                ? 93
+                : 111
+              : 96,
           font: tag === "kiosk-action-card" ? "18px" : "17px",
           overflow: false,
           grid: { columns: 6, rows: "auto" },

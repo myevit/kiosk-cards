@@ -170,10 +170,80 @@ export const kioskStyles = css`
     padding-bottom: 14px;
   }
 `;
+/** Compact status capsule extracted from the badge-card reference; no Large variant. */
+export const pillStyles = css`
+  :host {
+    display: inline-block;
+    max-width: 100%;
+  }
+  [part="surface"].pill {
+    height: auto;
+    min-width: var(--kiosk-pill-min-width, 140px);
+    width: max-content;
+    max-width: var(--kiosk-pill-max-width, 180px);
+    padding: 4px 12px;
+    column-gap: 8px;
+    border-radius: var(--kiosk-radius, 18px);
+    background: var(--kiosk-background, rgba(255, 255, 255, 0.9));
+    color: rgba(0, 0, 0, 0.9);
+  }
+  .pill [part="icon-target"] {
+    flex: 0 0 24px;
+    min-height: 32px;
+    margin: -4px 0;
+  }
+  .pill [part="icon-circle"] {
+    width: 24px;
+    height: 24px;
+    border-radius: 0;
+    background: transparent;
+    color: var(--kiosk-icon-color, var(--accent-color, #3bc8ce));
+    font-size: 16.8px;
+    font-weight: 400;
+    opacity: 1;
+  }
+  .pill ha-icon,
+  .pill ha-state-icon {
+    --mdc-icon-size: 24px;
+    width: 24px;
+    height: 24px;
+  }
+  .pill [part="body-target"] {
+    align-items: flex-start;
+    justify-content: flex-start;
+    min-height: 0;
+    margin: -4px 0;
+    padding: 4px 0;
+    flex: 1;
+  }
+  .pill.no-name:not(.no-state) [part="body-target"] {
+    justify-content: flex-end;
+  }
+  .pill [part="title"] {
+    font-size: 10px;
+    font-weight: 400;
+    line-height: 11px;
+    color: rgba(0, 0, 0, 0.7);
+    max-width: 100%;
+  }
+  .pill [part="detail"] {
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 16px;
+    color: rgba(0, 0, 0, 0.9);
+    max-width: 100%;
+  }
+  .pill .empty-icon {
+    flex: 0 0 0px;
+  }
+`;
 export const designTokens = Object.freeze({
   height: 69,
   actionHeight: 68,
   largeHeight: 146,
+  pillHeight: 35,
+  pillRadius: 18,
+  pillIconSize: 24,
   iconDiameter: 45,
   glyphSize: 25,
   titleSize: 17,

@@ -65,6 +65,11 @@ export interface Config {
   name?: string;
   icon?: string;
   detail?: string;
+  state_display?: string;
+  state_labels?: Record<string, string>;
+  show_name?: boolean;
+  show_state?: boolean;
+  show_icon?: boolean;
   appearance?: Appearance;
   active_states?: string[];
   tap_action?: Action;

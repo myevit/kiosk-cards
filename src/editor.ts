@@ -24,6 +24,7 @@ export class KioskCardEditor extends LitElement {
   private get schema() {
     const room = this.config.type === "custom:kiosk-room-card";
     const action = this.config.type === "custom:kiosk-action-card";
+    const pill = this.config.type === "custom:kiosk-pill-card";
     const identity = room
       ? [
           { name: "area", selector: { area: {} } },
@@ -72,7 +73,8 @@ export class KioskCardEditor extends LitElement {
                   default_action: action
                     ? "none"
                     : name === "icon_tap_action"
-                      ? ["light", "switch", "input_boolean", "fan"].includes(
+                      ? !pill &&
+                        ["light", "switch", "input_boolean"].includes(
                           (this.config.entity || "").split(".")[0],
                         )
                         ? "toggle"
@@ -88,45 +90,57 @@ export class KioskCardEditor extends LitElement {
         ];
     return [
       ...identity,
-      { name: "var_large", selector: { boolean: {} } },
-      ...(!room ? [text("detail")] : []),
+      ...(pill
+        ? ["show_name", "show_state", "show_icon"].map((name) => ({
+            name,
+            selector: { boolean: {} },
+          }))
+        : [{ name: "var_large", selector: { boolean: {} } }]),
+      ...(!room ? [text(pill ? "state_display" : "detail")] : []),
       ...interactions,
       {
         name: "appearance",
         type: "expandable",
-        schema: ["icon_color", "background", "active_background", "radius"].map(
-          text,
-        ),
+        schema: (pill
+          ? ["icon_color", "background", "radius"]
+          : ["icon_color", "background", "active_background", "radius"]
+        ).map(text),
       },
     ];
   }
   private label = (s: any) =>
-    (
-      ({
-        entity: "Entity",
-        name: "Name",
-        icon: "Icon",
-        area: "Area",
-        navigation_path: "Navigation path",
-        temperature_entity: "Temperature sensor",
-        occupancy_entity: "Occupancy sensor",
-        light_entities: "Lights (optional override)",
-        var_large: "Large",
-        detail: "Detail (optional override)",
-        interactions: "Interactions",
-        appearance: "Appearance (optional)",
-        icon_color: "Category color (CSS color)",
-        background: "Off background",
-        active_background: "Active background",
-        radius: "Corner radius",
-        tap_action: "Body tap",
-        hold_action: "Body hold",
-        double_tap_action: "Body double tap",
-        icon_tap_action: "Icon tap",
-        icon_hold_action: "Icon hold",
-        icon_double_tap_action: "Icon double tap",
-      }) as any
-    )[s.name] || s.name;
+    this.config.type === "custom:kiosk-pill-card" && s.name === "background"
+      ? "Background"
+      : (
+          {
+            entity: "Entity",
+            name: "Name",
+            icon: "Icon",
+            area: "Area",
+            navigation_path: "Navigation path",
+            temperature_entity: "Temperature sensor",
+            occupancy_entity: "Occupancy sensor",
+            light_entities: "Lights (optional override)",
+            var_large: "Large",
+            show_name: "Show name",
+            show_state: "Show state",
+            show_icon: "Show icon",
+            state_display: "State text (optional override)",
+            detail: "Detail (optional override)",
+            interactions: "Interactions",
+            appearance: "Appearance (optional)",
+            icon_color: "Category color (CSS color)",
+            background: "Off background",
+            active_background: "Active background",
+            radius: "Corner radius",
+            tap_action: "Body tap",
+            hold_action: "Body hold",
+            double_tap_action: "Body double tap",
+            icon_tap_action: "Icon tap",
+            icon_hold_action: "Icon hold",
+            icon_double_tap_action: "Icon double tap",
+          } as any
+        )[s.name] || s.name;
   private change(e: CustomEvent) {
     e.stopPropagation();
     const value = e.detail.value;
@@ -143,15 +157,17 @@ export class KioskCardEditor extends LitElement {
     if (!this.config || !this.hass) return nothing;
     return html`<ha-form
         .hass=${this.hass}
-        .data=${{ ...this.config, var_large: this.config.var_large ?? this.config.variables?.var_large ?? false }}
+        .data=${this.config.type === "custom:kiosk-pill-card" ? { ...this.config, show_name: this.config.show_name ?? true, show_state: this.config.show_state ?? true, show_icon: this.config.show_icon ?? true } : { ...this.config, var_large: this.config.var_large ?? this.config.variables?.var_large ?? false }}
         .schema=${this.schema}
         .computeLabel=${this.label}
         @value-changed=${this.change}
       ></ha-form>
       <p>
-        Default appearance follows the kiosk design. Entity icon taps control
-        only lights, switches, input booleans and fans. Room controls only
-        navigate; action cards require an explicit action.
+        Pills stay compact and default to more-info on both targets. Large
+        applies only to entity, action and room cards. Default appearance
+        follows the kiosk design. Entity icon taps control only lights, switches
+        and input booleans. Room controls only navigate; action cards require an
+        explicit action.
       </p>`;
   }
 }
