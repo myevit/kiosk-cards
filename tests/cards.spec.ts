@@ -105,7 +105,8 @@ test("quick icon sends one safe domain call, body opens more-info, incoming stat
   expect(await page.evaluate(() => (window as any).calls)).toEqual([
     ["light", "turn_on", { entity_id: "light.example" }, undefined],
   ]);
-  await expect(page.locator('[part="feedback"]')).toHaveText("Saving…");
+  await expect(page.locator('[part="feedback"]')).toHaveCount(0);
+  await expect(page.locator('[part="surface"]')).toHaveAttribute("aria-busy", "true");
   await page.evaluate(() => {
     const w = window as any;
     w.card.hass = {

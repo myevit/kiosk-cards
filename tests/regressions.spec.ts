@@ -75,7 +75,8 @@ test("reconfiguration isolates an in-flight command from the next entity", async
   });
   await page.locator('[part="icon-target"]').click();
   await page.evaluate(() => (window as any).resolvers[0]({}));
-  await expect(page.locator('[part="feedback"]')).toHaveText("Saving…");
+  await expect(page.locator('[part="feedback"]')).toHaveCount(0);
+  await expect(page.locator('[part="surface"]')).toHaveAttribute("aria-busy", "true");
   expect(
     await page.evaluate(() =>
       (window as any).calls.map((a: any[]) => a[2].entity_id),

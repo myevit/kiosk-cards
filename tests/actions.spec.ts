@@ -141,7 +141,8 @@ test("pending locks duplicate taps, timeout has no retry and late ACK cannot cle
   expect(await page.evaluate(() => (window as any).calls.length)).toBe(1);
   await page.locator('[part="icon-target"]').click();
   await page.evaluate(() => (window as any).resolvers[0]({}));
-  await expect(page.locator('[part="feedback"]')).toHaveText("Saving…");
+  await expect(page.locator('[part="feedback"]')).toHaveCount(0);
+  await expect(page.locator('[part="surface"]')).toHaveAttribute("aria-busy", "true");
   expect(await page.evaluate(() => (window as any).calls.length)).toBe(2);
 });
 test("service failure surfaces local feedback without inventing ON state", async ({

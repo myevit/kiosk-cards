@@ -70,6 +70,7 @@ export class KioskPillCard extends KioskBaseCard {
       showState = this.config.show_state !== false;
     return html`<ha-card
       part="surface"
+      aria-busy=${String(this.busy)}
       class=${`pill ${showName ? "" : "no-name"} ${showState ? "" : "no-state"} ${!this.available ? "unavailable" : ""}`}
       style=${styleMap({ "--kiosk-background": a?.background, "--kiosk-icon-color": a?.icon_color, "--kiosk-radius": a?.radius })}
       @click=${(e: MouseEvent) => this.tap("body", e)}
@@ -90,7 +91,7 @@ export class KioskPillCard extends KioskBaseCard {
         @pointerleave=${this.pointerEnd}
       >
         ${showName ? html`<span part="title">${this.cardTitle}</span>` : nothing}${showState ? html`<span part="detail">${this.detail}</span>` : nothing}</button
-      >${this.busy || this.error ? html`<span part="feedback" role="status">${this.busy ? "Saving…" : this.error}</span>` : nothing}</ha-card
+      >${this.error ? html`<span part="feedback" role="status">${this.error}</span>` : nothing}</ha-card
     >`;
   }
 }

@@ -302,6 +302,7 @@ export class KioskBaseCard extends LitElement {
     const a = this.config.appearance;
     return html`<ha-card
       part="surface"
+      aria-busy=${String(this.busy)}
       class=${[this.active ? "active" : "", !this.available ? "unavailable" : "", this.isAction ? "action" : "", this.large ? "large" : ""].join(" ")}
       style=${styleMap({ "--kiosk-icon-color": a?.icon_color, "--kiosk-default-icon-color": this.config.entity?.startsWith("light.") ? "var(--accent-color,#3bc8ce)" : undefined, "--kiosk-background": a?.background, "--kiosk-active-background": a?.active_background, "--kiosk-radius": a?.radius })}
     >
@@ -331,7 +332,7 @@ export class KioskBaseCard extends LitElement {
       >
         <span part="title">${this.cardTitle}</span
         >${this.detail ? html`<span part="detail">${this.detail}</span>` : nothing}</button
-      >${this.busy || this.error ? html`<span part="feedback" role="status">${this.busy ? "Saving…" : this.error}</span>` : nothing}</ha-card
+      >${this.error ? html`<span part="feedback" role="status">${this.error}</span>` : nothing}</ha-card
     >`;
   }
 }
