@@ -18,30 +18,32 @@ const band = (n: number) => n <= 3 ? 0 : n <= 6 ? 1 : n <= 10 ? 2 : 3;
 export class KioskAirCard extends KioskBaseCard {
   static styles = css`${kioskStyles}
     :host { container-type:inline-size; }
-    [part="surface"] { display:block; height:auto; padding:26px; background:var(--kiosk-background,var(--kiosk-active-background,white)); background-image:radial-gradient(ellipse at 95% 0%,color-mix(in srgb,var(--air-color) 25%,transparent),transparent 65%),linear-gradient(145deg,color-mix(in srgb,var(--air-color) 4%,transparent),color-mix(in srgb,var(--air-color) 12%,transparent)); color:var(--kiosk-active-title,black); }
+    [part="surface"] { display:block; height:auto; padding:14px 18px 13px; background:var(--kiosk-background,var(--kiosk-active-background,white)); background-image:radial-gradient(ellipse at 95% 0%,color-mix(in srgb,var(--air-color) 25%,transparent),transparent 65%),linear-gradient(145deg,color-mix(in srgb,var(--air-color) 4%,transparent),color-mix(in srgb,var(--air-color) 12%,transparent)); color:var(--kiosk-active-title,black); }
     .identity { display:flex; align-items:center; gap:10px; }
     .identity > div { min-width:0; }
-    [part="icon-circle"] { flex:none; background:var(--kiosk-icon-color,var(--accent-color,#3bc8ce)); }
-    [part="detail"] { color:inherit; opacity:.65; margin-top:2px; }
-    .hero { display:flex; align-items:baseline; flex-wrap:wrap; gap:14px; margin-top:30px; }
-    [part="aqhi"] { font-size:66px; font-weight:650; letter-spacing:-2px; line-height:1; }
-    [part="category"] { font-size:34px; font-weight:650; letter-spacing:-1px; line-height:1.1; overflow-wrap:anywhere; }
-    [part="interpretation"] { font-size:17px; line-height:1.4; margin:10px 0 0; max-width:28ch; }
-    .rail { display:flex; gap:4px; margin-top:24px; height:7px; }
+    [part="icon-circle"] { flex:none; width:38px; height:38px; background:var(--kiosk-icon-color,var(--accent-color,#3bc8ce)); }
+    [part="title"] { font-size:16px; line-height:20px; white-space:normal; overflow-wrap:anywhere; }
+    [part="detail"] { color:inherit; opacity:.65; font-size:12px; line-height:16px; margin-top:0; white-space:normal; overflow-wrap:anywhere; }
+    .hero { display:flex; align-items:baseline; flex-wrap:wrap; gap:6px 8px; margin-top:9px; }
+    [part="aqhi"] { flex:none; white-space:nowrap; font-size:43px; font-weight:650; letter-spacing:-2px; line-height:1; }
+    [part="category"] { font-size:25px; font-weight:650; letter-spacing:-.7px; line-height:1.15; overflow-wrap:anywhere; }
+    [part="interpretation"] { font-size:13px; line-height:1.4; margin:7px 0 12px; }
+    .rail { display:flex; gap:4px; height:5px; }
     [part="segment"] { flex:1; border-radius:5px; position:relative; opacity:.6; }
     [part="segment"].selected { opacity:1; }
-    .selected::after { content:''; position:absolute; width:5px; height:15px; top:-4px; left:calc(50% - 2.5px); background:currentColor; border:1px solid var(--kiosk-active-background,white); border-radius:5px; }
-    .labels { display:flex; justify-content:space-between; font-size:10px; opacity:.7; margin-top:7px; }
+    .selected::after { content:''; position:absolute; width:4px; height:11px; top:-3px; left:calc(50% - 2.5px); background:currentColor; border:1px solid var(--kiosk-active-background,white); border-radius:5px; }
+    .labels { display:flex; justify-content:space-between; font-size:9px; line-height:12px; opacity:.7; margin-top:5px; }
     .row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-    .primary-details { margin-top:20px; }
-    .unit { font-size:13px; font-weight:400; letter-spacing:0; opacity:.7; }
+    .local-summary { cursor:pointer; touch-action:manipulation; border-radius:12px; }
+    .local-summary:focus-visible { outline:2px solid var(--primary-color,#3bc8ce); outline-offset:4px; }
+    .unit { font-size:12px; font-weight:400; letter-spacing:0; opacity:.7; }
     .provenance { font-size:11px; line-height:1.5; opacity:.75; margin-top:3px; }
     .regional-section { margin-top:20px; padding-top:17px; border-top:1px solid color-mix(in srgb,currentColor 12%,transparent); }
     .regional-reading { min-width:0; }
     [part="regional-category"] { display:block; font-size:20px; font-weight:600; line-height:1.25; overflow-wrap:anywhere; }
     [part="regional-aqhi"] { font-size:17px; font-weight:600; margin-top:5px; }
     button { flex:none; min-height:44px; min-width:44px; padding:10px 14px; border-radius:18px; background:color-mix(in srgb,currentColor 7%,transparent); font-size:13px; }
-    @container (max-width:360px) { [part="surface"] { padding:22px; } }
+
   `;
   private freshnessClock?: ReturnType<typeof setInterval>;
   connectedCallback() { super.connectedCallback(); this.freshnessClock = setInterval(() => this.requestUpdate(), 30000); }
@@ -57,7 +59,7 @@ export class KioskAirCard extends KioskBaseCard {
     if (config.stale_after_minutes !== undefined && (!Number.isFinite(config.stale_after_minutes) || config.stale_after_minutes < 1 || config.stale_after_minutes > 1440)) throw Error('stale_after_minutes must be between 1 and 1440');
     this.applyConfig(config);
   }
-  getCardSize() { return this.config?.regional_entity ? 7 : 5; }
+  getCardSize() { return this.config?.regional_entity ? 7 : 4; }
   getGridOptions() { return { columns: 12, rows: 'auto' as const, min_columns: 6 }; }
   private moreInfo(e: Event, entityId: string) {
     e.stopPropagation();
@@ -123,10 +125,11 @@ export class KioskAirCard extends KioskBaseCard {
     if (!this.config || !this.hass) return nothing;
     const local = this.local, regional = this.regional, regionalState = this.hass.states[this.config.regional_entity!];
     return html`<ha-card part="surface" style=${styleMap({ '--air-color': local.color, '--kiosk-background': this.config.appearance?.background, '--kiosk-radius': this.config.appearance?.radius, '--kiosk-icon-color': this.config.appearance?.icon_color })}>
+      <div class="local-summary" role="button" tabindex="0" aria-label=${`${this.config.name || 'Outside air'}: local Canadian smoke history`} aria-description="Local PM2.5-only Canadian smoke estimate, not full regional AQHI. Bands: low 1–3, moderate 4–6, high 7–10, very high 10+." title="Canadian PM2.5-only smoke estimate, not the full regional multi-pollutant AQHI." @click=${(e: Event) => this.moreInfo(e, this.config.aqhi_entity!)} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!e.repeat) this.moreInfo(e, this.config.aqhi_entity!); } }}>
       <div class="identity"><span part="icon-circle" aria-hidden="true"><ha-icon .icon=${this.config.icon || 'mdi:weather-windy'}></ha-icon></span><div><span part="title">${this.config.name || 'Outside air'}</span>${this.config.location ? html`<span part="detail">${this.config.location}</span>` : nothing}</div></div>
       <div role="status" aria-live="polite" aria-atomic="true"><div class="hero"><div part="aqhi">${local.value} <span class="unit">AQHI</span></div><span part="category">${local.label}</span></div><p part="interpretation">${local.sentence}</p></div>
       <div aria-hidden="true"><div class="rail">${risks.map((risk, i) => html`<span part="segment" class=${local.index === i ? 'selected' : ''} style=${styleMap({ background: risk.color })}></span>`)}</div><div class="labels"><span>Low · 1–3</span><span>Very high · 10+</span></div></div>
-      <div class="row primary-details"><div class="provenance">Canadian smoke estimate<br>Local PM2.5 only</div><button aria-label="Details: local Canadian smoke history" title="Canadian PM2.5-only smoke estimate, not the full regional multi-pollutant AQHI." @click=${(e: Event) => this.moreInfo(e, this.config.aqhi_entity!)}>Details ↗</button></div>
+      </div>
       ${this.config.regional_entity ? html`<section class="regional-section" aria-label="Regional Canadian AQHI"><div class="provenance">${regionalState?.attributes.location || 'Regional'} · Regional AQHI</div><div class="row"><div class="regional-reading" role="status" aria-live="polite" aria-atomic="true"><span part="regional-category">${regional.label}</span><div part="regional-aqhi">${regional.value} <span class="unit">AQHI</span></div></div><button aria-label="Details: regional AQHI history" @click=${(e: Event) => this.moreInfo(e, this.config.regional_entity!)}>Details ↗</button></div>${regionalState?.attributes.attribution ? html`<div class="provenance">${regionalState.attributes.attribution}</div>` : nothing}</section>` : nothing}
     </ha-card>`;
   }
