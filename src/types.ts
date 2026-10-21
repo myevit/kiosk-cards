@@ -3,6 +3,8 @@ export interface State {
   state: string;
   attributes: Record<string, any>;
   last_changed?: string;
+  last_updated?: string;
+  last_reported?: string;
 }
 export interface Hass {
   states: Record<string, State>;
@@ -62,6 +64,14 @@ export interface Config {
   var_large?: boolean;
   variables?: { var_large?: boolean; [key: string]: unknown };
   entity?: string;
+  /** Read-only Canadian PM2.5 smoke estimate and optional regional AQHI. */
+  aqhi_entity?: string;
+  regional_entity?: string;
+  category_entity?: string;
+  source_entity?: string;
+  data_expected_entity?: string;
+  location?: string;
+  stale_after_minutes?: number;
   name?: string;
   icon?: string;
   detail?: string;

@@ -15,6 +15,9 @@ if (!customElements.get("kiosk-climate-card")) customElements.define("kiosk-clim
 import { KioskStatusCard } from "./status.js";
 export { KioskStatusCard } from "./status.js";
 if (!customElements.get("kiosk-status-card")) customElements.define("kiosk-status-card", KioskStatusCard);
+import { KioskAirCard } from './air.js';
+export { KioskAirCard } from './air.js';
+if (!customElements.get('kiosk-air-card')) customElements.define('kiosk-air-card', KioskAirCard);
 export { KioskCardEditor } from "./editor.js";
 if (!customElements.get("kiosk-entity-card"))
   customElements.define("kiosk-entity-card", KioskEntityCard);
@@ -44,6 +47,7 @@ for (const [type, name, description] of [
   ["kiosk-room-card", "Kiosk room", "Room summary and navigation"],
   ["kiosk-door-card", "Kiosk door", "Independent door and linked lock observations"],
   ["kiosk-climate-card", "Kiosk climate", "Current temperature and HVAC mode"],
+  ["kiosk-air-card", "Kiosk air", "Read-only Canadian smoke estimate and separate regional AQHI"],
   ["kiosk-status-card", "Kiosk status", "Passive temperature and cross-entity status display"],
   [
     "kiosk-pill-card",
