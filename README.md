@@ -200,7 +200,23 @@ Defaults reproduce a 69px entity/room row, 68px action row, 45px circle, 25px gl
 
 Stable CSS variables: `--kiosk-height`, `--kiosk-radius`, `--kiosk-background`, `--kiosk-active-background`, `--kiosk-icon-color`, `--kiosk-off-title`, `--kiosk-active-title`, `--kiosk-off-detail`, `--kiosk-active-detail`, `--kiosk-off-circle`, `--kiosk-glyph`, `--kiosk-shadow`, `--kiosk-title-size`, `--kiosk-identity-width`. Shadow parts: `surface`, `icon-target`, `icon-circle`, `body-target`, `title`, `detail`, `feedback`. No private HA/button-card class names are styling dependencies.
 
-## Canadian local smoke air card
+## Canadian local smoke air card — DEPRECATED
+
+> **`custom:kiosk-air-card` is deprecated; do not use it for new dashboards.**
+> Prefer Home Assistant's built-in [Statistics](https://www.home-assistant.io/integrations/statistics/)
+> and [Template](https://www.home-assistant.io/integrations/template/) helpers with
+> a built-in dashboard card for a local PM2.5 smoke estimate. Native helper
+> window/coverage semantics are not guaranteed to match the custom integration;
+> validate real output and missing-data behavior after warmup before cutover.
+> A local PM2.5-only estimate is not full or official community AQHI; keep the
+> official regional feed separate and render the top local band as **10+**.
+>
+> Existing air-card rendering and picker registration are retained for fallback
+> and rollback until replacements are verified. This notice does not remove or
+> disable an installed card. The configuration below is legacy reference.
+> **Only the dedicated air card is deprecated:** the shared Kiosk Cards package
+> and its other entity, action, room, pill, door, climate and status cards remain
+> maintained. Do not uninstall the shared package while other cards use it.
 
 `custom:kiosk-air-card` is read-only. A prominent Canadian number and risk
 category lead a calm tinted card with a four-band rail. A smaller optional
