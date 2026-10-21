@@ -22,6 +22,8 @@ export class KioskCardEditor extends LitElement {
     this.config = { ...config };
   }
   private get schema() {
+    const air = this.config.type === "custom:kiosk-air-card";
+    if (air) return [entity('aqhi_entity',{filter:{domain:'sensor'}}),entity('regional_entity',{filter:{domain:'sensor'}}),entity('category_entity',{filter:{domain:'sensor'}}),entity('source_entity',{filter:{domain:'sensor'}}),entity('data_expected_entity',{filter:{domain:'sensor',device_class:'timestamp'}}),text('name'),text('location'),{name:'icon',selector:{icon:{}}},{name:'stale_after_minutes',selector:{number:{min:1,max:1440,mode:'box',unit_of_measurement:'min'}}},{name:'appearance',type:'expandable',schema:['icon_color','background','radius'].map(text)}];
     const room = this.config.type === "custom:kiosk-room-card";
     const action = this.config.type === "custom:kiosk-action-card";
     const pill = this.config.type === "custom:kiosk-pill-card";
@@ -120,6 +122,13 @@ export class KioskCardEditor extends LitElement {
       ? "Background"
       : (
           {
+            aqhi_entity: "Local Canadian PM2.5 smoke index",
+            regional_entity: "Regional Canadian AQHI (optional)",
+            category_entity: "Canadian smoke risk category sensor",
+            source_entity: "Source PM2.5 sensor",
+            data_expected_entity: "History ready timestamp (optional)",
+            stale_after_minutes: "Stale after (minutes; default 120)",
+            location: "Location (optional)",
             entity: "Primary entity (body more-info target)",
             door_entity: "Door contact or cover (optional override)",
             lock_entity: "Linked lock",
@@ -180,11 +189,11 @@ export class KioskCardEditor extends LitElement {
         @value-changed=${this.change}
       ></ha-form>
       <p>
-        Pills stay compact and default to more-info on both targets. Large
+        ${this.config.type === 'custom:kiosk-air-card' ? 'Read-only Canadian PM2.5-only smoke estimate with separate optional regional AQHI. Each Details button opens its own native Home Assistant entity history. No device actions or custom dialogs.' : html`Pills stay compact and default to more-info on both targets. Large
         applies only to entity, action, room, door and climate cards. Default appearance
         follows the kiosk design. Entity icon taps control only lights, switches
         and input booleans. Room controls only navigate; action cards require an
-        explicit action.
+        explicit action.`}
       </p>`;
   }
 }

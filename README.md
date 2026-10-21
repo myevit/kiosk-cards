@@ -200,6 +200,90 @@ Defaults reproduce a 69px entity/room row, 68px action row, 45px circle, 25px gl
 
 Stable CSS variables: `--kiosk-height`, `--kiosk-radius`, `--kiosk-background`, `--kiosk-active-background`, `--kiosk-icon-color`, `--kiosk-off-title`, `--kiosk-active-title`, `--kiosk-off-detail`, `--kiosk-active-detail`, `--kiosk-off-circle`, `--kiosk-glyph`, `--kiosk-shadow`, `--kiosk-title-size`, `--kiosk-identity-width`. Shadow parts: `surface`, `icon-target`, `icon-circle`, `body-target`, `title`, `detail`, `feedback`. No private HA/button-card class names are styling dependencies.
 
+## Canadian local smoke air card
+
+`custom:kiosk-air-card` is read-only. A prominent Canadian number and risk
+category lead a calm tinted card with a four-band rail. A smaller optional
+regional AQHI remains independent. Identity reuses the standard kiosk 45px
+circle, 25px glyph and 17/15px title/subtitle; the hero affects no other cards.
+
+```yaml
+type: custom:kiosk-air-card
+aqhi_entity: sensor.example_canadian_smoke_index
+category_entity: sensor.example_canadian_smoke_category
+source_entity: sensor.example_pm25
+regional_entity: sensor.example_regional_aqhi # optional, independent regional feed
+name: Outside air
+location: Patio
+stale_after_minutes: 120                    # 1–1440; default 120
+# Optional: timestamp when enough local history will be available
+# data_expected_entity: sensor.example_history_ready
+appearance:
+  radius: 30px                             # optional; otherwise HA theme radius
+  icon_color: var(--accent-color)
+grid_options:
+  columns: 12
+  rows: auto
+```
+
+The local numeric sensor must be a native Canadian **PM2.5-only smoke estimate**,
+not a renamed US AQI. Its required attributes are
+`index_type: canadian_aqhi_smoke_pm25` and `scope: local_pm25_only_estimate`.
+The card does not calculate an index, gather history, convert US AQI to AQHI or
+create sensors. Configure the compatible integration profile separately.
+
+| Numeric state | Category sensor state | Display |
+| --- | --- | --- |
+| 1–3 | `low` | Low risk |
+| 4–6 | `moderate` | Moderate risk |
+| 7–10 | `high` | High risk |
+| 11 | `very_high` | 10+ · Very high risk |
+
+Every **Details** button is at least 44px and supports Enter/Space. Local Details
+opens `aqhi_entity`; regional Details opens `regional_entity`, both in native HA
+more-info/history. No custom dialogs or physical actions. The local caption says
+**Canadian smoke estimate · Local PM2.5 only**; it is not a full multi-pollutant
+regional AQHI or a health guarantee. No weather, trend or ventilation advice.
+
+Exact local category/numeric agreement is required; disagreement shows
+**Updating**. Missing/unavailable observations show **Unavailable**. Invalid,
+unknown or incorrectly typed data show **Unknown**. Unknown calculation plus an
+optional future ready timestamp shows **Warming up**. Stale local calculation or
+PM source reports show **Stale**. Non-ready states hide the number/rail marker;
+zero PM2.5 remains valid input (Canadian index minimum is 1). Backend validity
+and history-completeness decisions are never overridden by the card.
+
+Regional AQHI never substitutes or blends with the local estimate. It stays
+readable if the local source fails, and vice versa. Location/attribution come
+from the regional entity. Environment Canada's XML preserves decimals; the card
+uses nearest-integer public reporting, minimum 1, before the published bands:
+2.9 → **3 · Low risk**, 3.5 → 4, 6.5 → 7, 10.5 → **10+**. A regional `10+` or
+integer 11 displays **10+**. This rounding concerns regional source display,
+not local PM-to-index calculation.
+
+Sources: [federal AQHI bands](https://www.canada.ca/en/environment-climate-change/services/air-quality-health-index/about.html),
+[Environment Canada source library](https://github.com/michaeldavie/env_canada/blob/master/env_canada/ec_aqhi.py),
+[public calculation/rounding description](https://en.wikipedia.org/wiki/Air_Quality_Health_Index_(Canada)#Calculation).
+
+Local freshness requires the numeric backend's `status: valid`, matching
+`source_entity`, positive numeric `source_max_age_minutes`, and explicit ISO
+`source_last_reported` / `evaluated_at` attributes. HA's normal frontend states
+omit `last_reported`; unchanged source `last_updated` is not a receipt time.
+The source timestamp ages against the smaller of the backend source limit and
+`stale_after_minutes`; evaluation ages independently against the latter.
+Missing/malformed timestamps fail closed, with at most one minute of future
+clock skew allowed. Backend invalid/history statuses still hide the number.
+Regional feeds retain conservative `last_reported` / `last_updated` aging,
+never `last_changed`; without explicit report metadata unchanged feeds may age
+out. A 30-second clock catches aging without incoming updates and stops on
+disconnect. These limits never override backend source checks.
+
+Native visual editor and YAML support the same observations/identity settings.
+Appearance fields: `background`, `radius`, `icon_color`. Shared HA/kiosk font,
+accent, radius and shadow variables apply. Category color only tints the
+surface/rail; readable category text conveys status without relying on color.
+No Large toggle or configurable physical actions are exposed on air cards.
+
 ## Large tiles
 
 Turn on **Large** in the native visual editor for entity, action, room, door or climate cards. Standard is the default. The editor writes the top-level boolean `var_large`; YAML is optional:
