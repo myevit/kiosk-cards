@@ -63,36 +63,47 @@ export class KioskAirCard extends KioskBaseCard {
     e.stopPropagation();
     this.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId }, bubbles: true, composed: true }));
   }
-  private freshness(states: (State | undefined)[], minutes = this.config.stale_after_minutes ?? 120) {
-    // Never last_changed: an unchanged measurement can still have a fresh report.
-    const times = states.map(s => Date.parse(s?.last_reported || s?.last_updated || ''));
+  private timestampFreshness(values: unknown[], minutes = this.config.stale_after_minutes ?? 120) {
+    const times = values.map(value => {
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(value)) return NaN;
+      const time = Date.parse(value);
+      // Date.parse normalizes impossible dates such as February 30.
+      return Number.isFinite(time) && new Date(value.slice(0, 10) + 'T00:00:00Z').toISOString().slice(0, 10) === value.slice(0, 10) ? time : NaN;
+    });
+    // Allow at most one minute of clock skew, never missing/malformed metadata.
     if (times.some(t => !Number.isFinite(t) || t > Date.now() + 60000)) return 'Unknown';
     return times.some(t => Date.now() - t > minutes * 60000) ? 'Stale' : undefined;
+  }
+  private freshness(states: (State | undefined)[]) {
+    // Regional feeds without explicit report metadata retain conservative aging.
+    return this.timestampFreshness(states.map(s => s?.last_reported ?? s?.last_updated));
   }
   private get local() {
     const states = this.hass.states, calculated = states[this.config.aqhi_entity!], source = states[this.config.source_entity!], category = states[this.config.category_entity!];
     if ([calculated, source, category].some(s => !s || s.state === 'unavailable')) return pending('Unavailable', 'The local air sensor is unavailable.');
     if (!Number.isFinite(numeric(source))) return pending('Unknown', 'Waiting for a local particle reading.');
-    const freshness = this.freshness([calculated, source]);
-    if (freshness) return pending(freshness, 'Waiting for a recent particle reading.');
     const attributes = calculated.attributes;
     const typed = attributes.index_type === 'canadian_aqhi_smoke_pm25' && attributes.scope === 'local_pm25_only_estimate';
-    if (typed) {
-      const maxAge = attributes.source_max_age_minutes;
-      if (typeof maxAge === 'number' && Number.isFinite(maxAge) && maxAge > 0 && this.freshness([source], maxAge)) return pending('Stale', 'Waiting for a recent particle reading.');
-      if (attributes.status === 'source_stale') return pending('Stale', 'Waiting for a recent particle reading.');
-      if (attributes.status === 'incomplete_history') return pending('Warming up', 'Gathering enough particle history.');
-      if (attributes.status === 'history_unavailable') return pending('Unavailable', 'Particle history is unavailable.');
-      if (attributes.status && attributes.status !== 'valid') return pending('Unknown', 'Waiting for a valid particle reading.');
-    }
+    // Bind the certification to this source; frontend last_updated is not a
+    // receipt time for unchanged reports in HA's subscribe_entities transport.
+    if (!typed || attributes.source_entity !== this.config.source_entity) return pending('Unknown', 'Choose a matching Canadian PM2.5 smoke estimate sensor.');
+    const evaluated = this.timestampFreshness([attributes.evaluated_at]);
+    if (evaluated) return pending(evaluated, 'Waiting for a recent smoke calculation.');
+    if (attributes.status === 'source_stale') return pending('Stale', 'Waiting for a recent particle reading.');
+    if (attributes.status === 'incomplete_history') return pending('Warming up', 'Gathering enough particle history.');
+    if (attributes.status === 'history_unavailable') return pending('Unavailable', 'Particle history is unavailable.');
+    if (attributes.status !== 'valid') return pending('Unknown', 'Waiting for a valid particle reading.');
+    const maxAge = attributes.source_max_age_minutes;
+    if (typeof maxAge !== 'number' || !Number.isFinite(maxAge) || maxAge <= 0) return pending('Unknown', 'Waiting for source freshness metadata.');
+    const freshness = this.timestampFreshness([attributes.source_last_reported], Math.min(maxAge, this.config.stale_after_minutes ?? 120));
+    if (freshness) return pending(freshness, 'Waiting for a recent particle reading.');
     const n = numeric(calculated);
     if (!Number.isInteger(n) || n < 1 || n > 11 || !risks.some(r => r.key === category.state)) {
       const expected = Date.parse(states[this.config.data_expected_entity || '']?.state || '');
       if ((calculated.state === 'unknown' || category.state === 'unknown') && expected > Date.now()) return pending('Warming up', 'Gathering enough particle history.');
       return pending('Unknown', 'Waiting for a calculated Canadian smoke index.');
     }
-    // Fail closed rather than relabelling an existing US AQI as Canadian AQHI.
-    if (!typed || (attributes.source_entity && attributes.source_entity !== this.config.source_entity)) return pending('Unknown', 'Choose a matching Canadian PM2.5 smoke estimate sensor.');
+
     const index = band(n);
     if (risks[index].key !== category.state) return pending('Updating', 'Waiting for matching Canadian smoke readings.');
     return { ...risks[index], index, value: n === 11 ? '10+' : String(n) };

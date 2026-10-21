@@ -265,10 +265,18 @@ Sources: [federal AQHI bands](https://www.canada.ca/en/environment-climate-chang
 [Environment Canada source library](https://github.com/michaeldavie/env_canada/blob/master/env_canada/ec_aqhi.py),
 [public calculation/rounding description](https://en.wikipedia.org/wiki/Air_Quality_Health_Index_(Canada)#Calculation).
 
-Freshness uses `last_reported` or `last_updated`, never `last_changed`. A
-30-second clock catches aging without incoming updates and stops on disconnect.
-Missing/invalid/implausibly future times never imply freshness. The freshness
-limit is a frontend fail-safe, not permission to ignore backend source checks.
+Local freshness requires the numeric backend's `status: valid`, matching
+`source_entity`, positive numeric `source_max_age_minutes`, and explicit ISO
+`source_last_reported` / `evaluated_at` attributes. HA's normal frontend states
+omit `last_reported`; unchanged source `last_updated` is not a receipt time.
+The source timestamp ages against the smaller of the backend source limit and
+`stale_after_minutes`; evaluation ages independently against the latter.
+Missing/malformed timestamps fail closed, with at most one minute of future
+clock skew allowed. Backend invalid/history statuses still hide the number.
+Regional feeds retain conservative `last_reported` / `last_updated` aging,
+never `last_changed`; without explicit report metadata unchanged feeds may age
+out. A 30-second clock catches aging without incoming updates and stops on
+disconnect. These limits never override backend source checks.
 
 Native visual editor and YAML support the same observations/identity settings.
 Appearance fields: `background`, `radius`, `icon_color`. Shared HA/kiosk font,

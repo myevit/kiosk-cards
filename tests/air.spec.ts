@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 const config = { type:'custom:kiosk-air-card',aqhi_entity:'sensor.example_smoke',category_entity:'sensor.example_category',source_entity:'sensor.example_pm25',regional_entity:'sensor.example_regional',data_expected_entity:'sensor.example_expected',location:'Patio' };
 const state=(entity_id:string,state:string,attributes:any={})=>({entity_id,state,attributes,last_updated:new Date().toISOString()});
-const metadata={index_type:'canadian_aqhi_smoke_pm25',scope:'local_pm25_only_estimate'};
+const metadata={index_type:'canadian_aqhi_smoke_pm25',scope:'local_pm25_only_estimate',status:'valid',source_entity:config.source_entity,source_max_age_minutes:15,source_last_reported:new Date().toISOString(),evaluated_at:new Date().toISOString()};
 async function mount(page:any){
  await page.goto('/tests/harness.html');await page.waitForFunction(()=>(window as any).ready);
  await page.evaluate(config=>{const w=window as any;w.calls=[];w.events=[];document.addEventListener('hass-more-info',(e:any)=>w.events.push(e.detail));w.card=document.createElement('kiosk-air-card');w.card.setConfig(config);document.querySelector('#mount')!.append(w.card);},config);
@@ -29,8 +29,8 @@ test('live partial availability, invalid data, warmup and stale branches clear r
   ['0','low','2','Unknown',{}],['-1','low','2','Unknown',{}],['3.5','low','2','Unknown',{}],['12','very_high','2','Unknown',{}],['7bad','high','2','Unknown',{}],['','low','2','Unknown',{}],
   ['3','good','2','Unknown',{}],['3','low','-1','Unknown',{}],
   ['unknown','unknown','2','Warming up',{'sensor.example_expected':state('sensor.example_expected',new Date(Date.now()+60*60000).toISOString())}],
-  ['3','low','2','Stale',{'sensor.example_pm25':{...state('sensor.example_pm25','2'),last_updated:old}}],
-  ['3','low','2','Stale',{'sensor.example_smoke':{...state('sensor.example_smoke','3',metadata),last_updated:old}}],
+  ['3','low','2','Stale',{'sensor.example_smoke':state('sensor.example_smoke','3',{...metadata,source_last_reported:old})}],
+  ['3','low','2','Stale',{'sensor.example_smoke':state('sensor.example_smoke','3',{...metadata,evaluated_at:old})}],
  ] as const){
   await update(page,n,cat,pm,'2.9',extra);await expect(page.locator('[part="category"]')).toHaveText(label);await expect(page.locator('[part="aqhi"]')).toHaveText('— AQHI');
   expect(await page.locator('[part="segment"].selected').count()).toBe(0);await expect(page.locator('[part="regional-category"]')).toHaveText('Low risk');
@@ -43,7 +43,7 @@ test('native backend history and source validity flags are respected independent
  for(const [status,label] of [['source_stale','Stale'],['incomplete_history','Warming up'],['history_unavailable','Unavailable'],['source_invalid','Unknown']]){
   await update(page,'unknown','unknown','2','2.9',{'sensor.example_smoke':state('sensor.example_smoke','unknown',{...metadata,status})});await expect(page.locator('[part="category"]')).toHaveText(label);await expect(page.locator('[part="regional-category"]')).toHaveText('Low risk');
  }
- await update(page,'3','low','2','2.9',{'sensor.example_smoke':state('sensor.example_smoke','3',{...metadata,source_max_age_minutes:15}),'sensor.example_pm25':{...state('sensor.example_pm25','2'),last_updated:new Date(Date.now()-16*60000).toISOString()}});await expect(page.locator('[part="category"]')).toHaveText('Stale');
+ await update(page,'3','low','2','2.9',{'sensor.example_smoke':state('sensor.example_smoke','3',{...metadata,source_last_reported:new Date(Date.now()-16*60000).toISOString()})});await expect(page.locator('[part="category"]')).toHaveText('Stale');
  await update(page,'3','low','2','2.9',{'sensor.example_smoke':state('sensor.example_smoke','3',{...metadata,source_entity:'sensor.other_pm25'})});await expect(page.locator('[part="category"]')).toHaveText('Unknown');
 });
 test('US AQI or unspecified source metadata cannot be relabelled as Canadian',async({page})=>{
@@ -58,18 +58,40 @@ test('regional XML decimals follow public integer reporting without gaps or scor
   await update(page,'3','low','2',raw);await expect(page.locator('[part="regional-aqhi"]')).toHaveText(value+' AQHI');await expect(page.locator('[part="regional-category"]')).toHaveText(label);await expect(page.locator('[part="category"]')).toHaveText('Low risk');
  }
 });
-test('fresh reports not last_changed determine freshness, aging without updates and disconnect cleanup',async({page})=>{
+test('backend-certified unchanged zero and positive reports survive old frontend timestamps',async({page})=>{
+ await mount(page);
+ const old=new Date(Date.now()-121*60000).toISOString(),now=new Date().toISOString();
+ for(const pm of ['0','20']){
+  await update(page,'1','low',pm,'2.9',{
+   'sensor.example_pm25':{...state('sensor.example_pm25',pm),last_changed:old,last_updated:old},
+   'sensor.example_smoke':{...state('sensor.example_smoke','1',{...metadata,status:'valid',source_entity:config.source_entity,source_max_age_minutes:15,source_last_reported:now,evaluated_at:now}),last_updated:old},
+  });
+  await expect(page.locator('[part="category"]')).toHaveText('Low risk');
+ }
+});
+test('certified reports age without updates and disconnect cleanup',async({page})=>{
  await page.clock.install();await mount(page);
  const old=new Date(Date.now()-121*60000).toISOString();
- await update(page,'3','low','0','2.9',{'sensor.example_pm25':{...state('sensor.example_pm25','0'),last_changed:old,last_updated:old,last_reported:new Date().toISOString()}});
+ await update(page,'3','low','0','2.9',{'sensor.example_pm25':{...state('sensor.example_pm25','0'),last_changed:old,last_updated:old}});
  await expect(page.locator('[part="category"]')).toHaveText('Low risk');
- await page.clock.fastForward(121*60000);await expect(page.locator('[part="category"]')).toHaveText('Stale');
+ await page.clock.fastForward(16*60000);await expect(page.locator('[part="category"]')).toHaveText('Stale');
  await page.evaluate(()=>{const w=window as any;w.renders=0;w.card.addController({hostUpdated(){w.renders++}});w.card.remove()});await page.clock.fastForward(60000);expect(await page.evaluate(()=>(window as any).renders)).toBe(0);
+});
+test('backend evaluation independently ages even with a new source certification',async({page})=>{
+ await page.clock.install();await mount(page);await update(page);
+ await expect(page.locator('[part="category"]')).toHaveText('Low risk');
+ await page.clock.fastForward(121*60000);
+ await page.evaluate(()=>{const w=window as any,s=w.card.hass.states;w.card.hass={states:{...s,'sensor.example_smoke':{...s['sensor.example_smoke'],attributes:{...s['sensor.example_smoke'].attributes,source_last_reported:new Date().toISOString()}}}}});
+ await expect(page.locator('[part="category"]')).toHaveText('Stale');
+ await expect(page.locator('[part="aqhi"]')).toHaveText('— AQHI');
 });
 test('missing and future timestamps and missing observations fail closed',async({page})=>{
  await mount(page);
- for(const last_updated of [undefined,'invalid',new Date(Date.now()+5*60000).toISOString()]){
-  await update(page,'3','low','2','2.9',{'sensor.example_pm25':{...state('sensor.example_pm25','2'),last_updated}});await expect(page.locator('[part="category"]')).toHaveText('Unknown');
+ for(const field of ['source_last_reported','evaluated_at'])for(const timestamp of [undefined,'invalid','2026','2026-02-30T12:00:00Z',new Date(Date.now()+5*60000).toISOString()]){
+  await update(page,'3','low','2','2.9',{'sensor.example_smoke':state('sensor.example_smoke','3',{...metadata,[field]:timestamp})});await expect(page.locator('[part="category"]')).toHaveText('Unknown');
+ }
+ for(const field of ['source_entity','source_max_age_minutes','status'])for(const value of [undefined,null,'',0,-1,Infinity,'15']){
+  await update(page,'3','low','2','2.9',{'sensor.example_smoke':state('sensor.example_smoke','3',{...metadata,[field]:value})});await expect(page.locator('[part="category"]')).toHaveText('Unknown');
  }
  await update(page,'3','low','2','2.9',{'sensor.example_category':undefined});await expect(page.locator('[part="category"]')).toHaveText('Unavailable');
 });
