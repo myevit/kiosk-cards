@@ -20,15 +20,25 @@ test('native Canadian smoke bands and 10+ display never use the US six-category 
  await update(page);await expect(page.locator('[part="interpretation"]')).toHaveText('Low particle levels around your home.');
  await expect(page.getByRole('button',{name:'Outside air: local Canadian smoke history'})).toHaveAttribute('title',/PM2.5-only.*not.*full regional/);
 });
-for(const width of [320,360,400,600])test(`compact local summary ${width}px retains the crop without footer noise`,async({page})=>{
+for(const width of [320,360,374,400,600])test(`compact local summary ${width}px retains the crop without footer noise`,async({page})=>{
  await page.setViewportSize({width,height:800});await mount(page);await page.evaluate(width=>{document.querySelector<HTMLElement>('#mount')!.style.width=width+'px'},width);
  await page.evaluate(()=>{const w=window as any;const {regional_entity,...config}=w.card.config;w.card.setConfig(config)});
  await update(page,'1','low');
  const geometry=await page.locator('[part="surface"]').evaluate(e=>{const s=e.getRootNode() as ShadowRoot,r=(selector:string)=>s.querySelector(selector)!.getBoundingClientRect();return {height:e.getBoundingClientRect().height,overflow:e.scrollWidth>e.clientWidth,aqhi:r('[part="aqhi"]'),category:r('[part="category"]')}});
- expect(geometry.height).toBeLessThanOrEqual(230);expect(geometry.height).toBeGreaterThanOrEqual(190);expect(geometry.overflow).toBe(false);
+ expect(geometry.height).toBeLessThanOrEqual(184);expect(geometry.height).toBeGreaterThanOrEqual(164);expect(geometry.overflow).toBe(false);
  expect(geometry.category.top).toBeLessThan(geometry.aqhi.bottom);expect(geometry.category.left).toBeGreaterThanOrEqual(geometry.aqhi.right);
  await expect(page.locator('.primary-details')).toHaveCount(0);await expect(page.locator('.provenance')).toHaveCount(0);await expect(page.locator('[part="interpretation"]')).toHaveText('Low particle levels around your home.');
  await expect(page.locator('[part="title"]')).toHaveText('Outside air');await expect(page.locator('[part="detail"]')).toHaveText('Patio');expect(await page.locator('[part="segment"]').count()).toBe(4);
+});
+for(const width of [320,360,374,400,600])test(`compact ${width}px high risk and long identity wrap without clipping`,async({page})=>{
+ await page.setViewportSize({width,height:1100});await mount(page);
+ await page.evaluate(width=>{const w=window as any;document.querySelector<HTMLElement>('#mount')!.style.width=width+'px';const {regional_entity,...config}=w.card.config;w.card.setConfig({...config,name:'Outside air and local particle conditions',location:'Covered patio beside the garden entrance'});},width);
+ for(const [n,key] of [['11','very_high'],['6','moderate'],['unknown','unknown'],['unavailable','unavailable']]){
+  await update(page,n,key);await page.locator('[part="category"]').waitFor();
+  const fit=await page.locator('[part="surface"]').evaluate(e=>{const s=e.getRootNode() as ShadowRoot,r=e.getBoundingClientRect();return [...s.querySelectorAll('[part="title"],[part="detail"],[part="aqhi"],[part="category"],[part="interpretation"],.labels')].map(el=>{const b=el.getBoundingClientRect();return {part:el.getAttribute('part')||el.className,contained:b.left>=r.left&&b.right<=r.right&&b.bottom<=r.bottom,sw:el.scrollWidth,cw:el.clientWidth,sh:el.scrollHeight,ch:el.clientHeight,clipsY:getComputedStyle(el).overflowY==='hidden'}}).filter(el=>!el.contained||el.sw>el.cw||(el.clipsY&&el.sh>el.ch))});
+  expect(fit).toEqual([]);
+ }
+ expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
 });
 test('live partial availability, invalid data, warmup and stale branches clear retained local values',async({page})=>{
  await mount(page);
@@ -110,7 +120,7 @@ for(const width of [320,360,400,600])test(`Canadian air ${width}px fit, touch, k
  for(const [n,key] of [['3','low'],['6','moderate'],['10','high'],['11','very_high'],['unknown','unknown'],['unavailable','unavailable']]){
   await update(page,n,key);await page.locator('[part="category"]').waitFor();
   const bounds=await page.locator('[part="surface"]').evaluate(e=>{const s=e.getRootNode() as ShadowRoot;return {width:e.getBoundingClientRect().width,overflow:e.scrollWidth>e.clientWidth,buttons:[...s.querySelectorAll('button')].map(b=>({w:b.getBoundingClientRect().width,h:b.getBoundingClientRect().height})),icon:s.querySelector('[part="icon-circle"]')!.getBoundingClientRect().width}});
-  expect(bounds.width).toBe(width);expect(bounds.overflow).toBe(false);expect(bounds.icon).toBe(45);for(const b of bounds.buttons){expect(b.w).toBeGreaterThanOrEqual(44);expect(b.h).toBeGreaterThanOrEqual(44)}
+  expect(bounds.width).toBe(width);expect(bounds.overflow).toBe(false);expect(bounds.icon).toBe(38);for(const b of bounds.buttons){expect(b.w).toBeGreaterThanOrEqual(44);expect(b.h).toBeGreaterThanOrEqual(44)}
  }
  await update(page);await page.getByRole('button',{name:'Outside air: local Canadian smoke history'}).focus();await page.keyboard.press('Enter');await page.keyboard.press('Space');await page.getByRole('button',{name:'Details: regional AQHI history'}).click();
  expect(await page.evaluate(()=>(window as any).events)).toEqual([{entityId:config.aqhi_entity},{entityId:config.aqhi_entity},{entityId:config.regional_entity}]);expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
