@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { useBlindEditorSource } from './blind-editor-source';
 const cfg = {
   type: "custom:kiosk-blind-presets-card",
   rows: 1,
@@ -31,6 +32,7 @@ const cfg = {
   extra: "root",
 };
 async function setup(page: any) {
+  await useBlindEditorSource(page);
   await page.goto("/tests/harness.html");
   await page.waitForFunction(() => (window as any).ready);
   return page.evaluate(async (cfg) => {
@@ -68,6 +70,54 @@ async function change(page: any, selector: string, data: any) {
       data,
     );
 }
+test('picture workflow has no script import or manual native command controls and never reads HA', async ({page}) => {
+  await setup(page);
+  await page.evaluate(() => {
+    const w = window as any;
+    w.reads = [];
+    w.editor.hass = {...w.editor.hass, callWS: async (message: any) => {w.reads.push(message); throw new Error('Editor must not read scripts');}};
+  });
+  await page.getByRole('button', {name:'Edit A',exact:true}).click();
+  await expect(page.locator('[data-script], [data-command], [data-command-preview]')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:/Copy commands|Remove override/})).toHaveCount(0);
+  const formMetadata = await page.locator('ha-form').evaluateAll((forms: any[]) => forms.map(form => ({schema:form.schema,labels:form.schema.map((field:any)=>form.computeLabel(field))})));
+  expect(JSON.stringify(formMetadata)).not.toMatch(/script|Native value|Native override|Copy from existing/i);
+  await change(page,'[data-position="0"]',{top:20,bottom:100});
+  await page.getByRole('button',{name:'Save',exact:true}).click();
+  await page.getByRole('button',{name:'Edit A',exact:true}).click();
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();
+  await page.evaluate(async () => {const w=window as any; w.editor.remove(); document.querySelector('#mount')!.append(w.editor); await w.editor.updateComplete;});
+  expect(await page.evaluate(()=>(window as any).reads)).toEqual([]);
+  expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
+});
+
+test('absolute independent picture targets Save and Cancel retain per-blind mappings and other presets', async ({page}) => {
+  await setup(page);
+  const config = await page.evaluate(() => {
+    const w=window as any;
+    const config=structuredClone(w.editor.config);
+    config.blinds[0].mapping='independent-tdbu';
+    config.blinds[1].mapping='sequential-tdbu';
+    w.editor.setConfig(config);
+    return config;
+  });
+  await page.getByRole('button',{name:'Edit A',exact:true}).click();
+  await change(page,'[data-position="0"]',{top:30,bottom:70});
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();
+  expect(await page.evaluate(()=>(window as any).changes)).toEqual([]);
+  await page.getByRole('button',{name:'Edit A',exact:true}).click();
+  expect(await page.locator('[data-position="0"]').evaluate((form:any)=>form.data)).toEqual(config.presets[0].positions[0]);
+  await change(page,'[data-position="0"]',{top:30,bottom:70});
+  await page.getByRole('button',{name:'Save',exact:true}).click();
+  const saved=await page.evaluate(()=>(window as any).changes.at(-1));
+  expect(saved.blinds).toEqual(config.blinds);
+  expect(saved.presets[1]).toEqual(config.presets[1]);
+  expect(saved.presets[0].positions).toEqual([{...config.presets[0].positions[0],top:30,bottom:70},config.presets[0].positions[1]]);
+  expect(saved.presets[0].commands).toBeUndefined();
+  expect(saved.presets[0].actions).toBeUndefined();
+  expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
+});
+
 test("native form selectors and clickable picture editor: draft Save/Cancel emits config only", async ({
   page,
 }) => {
