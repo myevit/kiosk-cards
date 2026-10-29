@@ -43,6 +43,15 @@ export class KioskBlindPresetsEditor extends LitElement {
   private error = "";
   private sourceScript = '';
   private copying = false;
+  private copyGeneration = 0;
+  private invalidateCopy() {
+    this.copyGeneration++;
+    this.copying = false;
+  }
+  disconnectedCallback() {
+    this.invalidateCopy();
+    super.disconnectedCallback();
+  }
   private removing?: {
     kind: "blind" | "preset";
     index: number;
@@ -55,6 +64,7 @@ export class KioskBlindPresetsEditor extends LitElement {
     });
   }
   setConfig(c: BlindPresetsConfig) {
+    this.invalidateCopy();
     this.sourceScript = '';
     this.config = structuredClone(c);
     this.draft = undefined;
@@ -106,12 +116,14 @@ export class KioskBlindPresetsEditor extends LitElement {
     if (this.emit(c)) this.newBlind = { width: 1 };
   }
   private edit(i: number) {
+    this.invalidateCopy();
     this.sourceScript = '';
     this.error = "";
     this.draftIndex = i;
     this.draft = structuredClone(this.config.presets[i]);
   }
   private addPreset() {
+    this.invalidateCopy();
     this.sourceScript = '';
     this.draftIndex = this.config.presets.length;
     this.error = "";
@@ -143,18 +155,19 @@ export class KioskBlindPresetsEditor extends LitElement {
   private async copyCommands() {
     if (!this.draft || !/^script\.[a-z0-9_]+$/.test(this.sourceScript) || !this.hass.callWS || this.copying) return;
     const draft = this.draft, source = this.sourceScript, config = this.config;
+    const generation = ++this.copyGeneration;
     this.copying = true;
     this.error = '';
     try {
       const result = await this.hass.callWS({type:'script/config', entity_id:source});
+      if (this.copyGeneration !== generation || !this.isConnected || this.draft !== draft || this.sourceScript !== source || this.config !== config) return;
       const commands = importCommands(result, config.blinds.map(b => b.entity));
-      if (!this.isConnected || this.draft !== draft || this.sourceScript !== source || this.config !== config) return;
       const next = {...draft, commands};
       delete next.actions;
       this.draft = next;
     } catch (e) {
-      if (this.draft === draft && this.sourceScript === source && this.config === config) this.error = (e as Error).message;
-    } finally { this.copying = false; }
+      if (this.copyGeneration === generation && this.isConnected && this.draft === draft && this.sourceScript === source && this.config === config) this.error = (e as Error).message;
+    } finally { if (this.copyGeneration === generation) this.copying = false; }
   }
   private commandChange(entity: string, e: CustomEvent) {
     e.stopPropagation();
@@ -320,7 +333,7 @@ export class KioskBlindPresetsEditor extends LitElement {
         <ha-form data-script .hass=${this.hass} .data=${{script:this.sourceScript}}
           .schema=${[{name:'script',selector:{entity:{filter:{domain:'script'}}}}]}
           .computeLabel=${() => 'Copy from existing script (optional)'}
-          @value-changed=${(e: CustomEvent) => {e.stopPropagation(); this.sourceScript = e.detail.value.script ?? ''; this.error = '';}}
+          @value-changed=${(e: CustomEvent) => {e.stopPropagation(); const source = e.detail.value.script ?? ''; if (source !== this.sourceScript) this.invalidateCopy(); this.sourceScript = source; this.error = '';}}
         ></ha-form>
         <button ?disabled=${!this.sourceScript || this.copying || !this.hass?.callWS} @click=${() => this.copyCommands()}>Copy commands</button>
         <p>Copies only simple cover actions into this draft. Review commands and picture, then Save. No script is run or linked.</p>

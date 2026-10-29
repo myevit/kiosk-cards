@@ -55,6 +55,19 @@ test('implicit band blocked; explicit partial target ignores other unavailable c
  await page.evaluate(()=>{const w=window as any;delete w.hass.states['cover.example_right'].attributes.current_tilt_position;w.el.hass={...w.hass,states:{...w.hass.states,'cover.example_right':{...w.hass.states['cover.example_right']}}}});
  await expect(page.getByRole('button')).toBeDisabled(); expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
 });
+test('editor disconnect invalidates imports and an old completion cannot release a newer copy',async({page})=>{
+ await setup(page,cfg(),true);await page.getByRole('button',{name:'Edit Band'}).click();await change(page,'[data-script]',{script:'script.example_privacy'});
+ await page.evaluate(()=>{const w=window as any;w.pendingImports=[];w.hass.callWS=()=>new Promise(resolve=>w.pendingImports.push(resolve))});
+ await page.getByRole('button',{name:'Copy commands',exact:true}).click();
+ await page.evaluate(async()=>{const w=window as any;w.el.remove();document.querySelector('#mount')!.append(w.el);await w.el.updateComplete});
+ expect(await page.evaluate(()=>(window as any).el.copying)).toBe(false);
+ await page.getByRole('button',{name:'Copy commands',exact:true}).click();expect(await page.evaluate(()=>(window as any).pendingImports.length)).toBe(2);
+ await page.evaluate(async()=>{const w=window as any;w.pendingImports[0]({config:{sequence:[{action:'cover.open_cover',target:{entity_id:'cover.example_right'}}]}});await new Promise(r=>setTimeout(r,0))});
+ expect(await page.evaluate(()=>(window as any).el.draft.commands)).toBeUndefined();expect(await page.evaluate(()=>(window as any).el.copying)).toBe(true);
+ await page.evaluate(async()=>{const w=window as any;w.pendingImports[1]({config:{sequence:[{action:'cover.close_cover',target:{entity_id:'cover.example_right'}}]}});await new Promise(r=>setTimeout(r,0))});
+ expect(await page.evaluate(()=>(window as any).el.draft.commands)).toEqual([{service:'close_cover',entity_id:entities[2]}]);expect(await page.evaluate(()=>(window as any).el.copying)).toBe(false);
+ expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);expect(await page.evaluate(()=>(window as any).changes)).toEqual([]);
+});
 test('script import grouped Privacy actions and right-only Peep-hole copies draft, never actuates, cancel and save',async({page})=>{
  await setup(page,cfg(),true); await page.getByRole('button',{name:'Edit Band'}).click();
  expect(await page.locator('[data-script]').evaluate((e:any)=>e.schema[0].selector.entity.filter.domain)).toBe('script');
