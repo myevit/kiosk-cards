@@ -1,6 +1,7 @@
 import { LitElement, html, nothing, css } from "lit";
 import type { Hass } from "./types.js";
 import { nativeComponents } from "./native.js";
+import { importCommands, nativeServices, type BlindCommand } from './blind-commands.js';
 import {
   blindPicture,
   presetProblem,
@@ -31,6 +32,8 @@ export class KioskBlindPresetsEditor extends LitElement {
     newBlind: { state: true },
     error: { state: true },
     removing: { state: true },
+    sourceScript: { state: true },
+    copying: { state: true },
   };
   declare hass: Hass;
   declare config: BlindPresetsConfig;
@@ -38,6 +41,8 @@ export class KioskBlindPresetsEditor extends LitElement {
   private draftIndex = -1;
   private newBlind: Partial<Blind> = { width: 1 };
   private error = "";
+  private sourceScript = '';
+  private copying = false;
   private removing?: {
     kind: "blind" | "preset";
     index: number;
@@ -50,6 +55,7 @@ export class KioskBlindPresetsEditor extends LitElement {
     });
   }
   setConfig(c: BlindPresetsConfig) {
+    this.sourceScript = '';
     this.config = structuredClone(c);
     this.draft = undefined;
     this.removing = undefined;
@@ -100,11 +106,13 @@ export class KioskBlindPresetsEditor extends LitElement {
     if (this.emit(c)) this.newBlind = { width: 1 };
   }
   private edit(i: number) {
+    this.sourceScript = '';
     this.error = "";
     this.draftIndex = i;
     this.draft = structuredClone(this.config.presets[i]);
   }
   private addPreset() {
+    this.sourceScript = '';
     this.draftIndex = this.config.presets.length;
     this.error = "";
     let n = this.draftIndex + 1;
@@ -131,6 +139,40 @@ export class KioskBlindPresetsEditor extends LitElement {
     const c = structuredClone(this.config);
     c.presets[this.draftIndex] = this.draft;
     if (this.emit(c)) this.draft = undefined;
+  }
+  private async copyCommands() {
+    if (!this.draft || !/^script\.[a-z0-9_]+$/.test(this.sourceScript) || !this.hass.callWS || this.copying) return;
+    const draft = this.draft, source = this.sourceScript, config = this.config;
+    this.copying = true;
+    this.error = '';
+    try {
+      const result = await this.hass.callWS({type:'script/config', entity_id:source});
+      const commands = importCommands(result, config.blinds.map(b => b.entity));
+      if (!this.isConnected || this.draft !== draft || this.sourceScript !== source || this.config !== config) return;
+      const next = {...draft, commands};
+      delete next.actions;
+      this.draft = next;
+    } catch (e) {
+      if (this.draft === draft && this.sourceScript === source && this.config === config) this.error = (e as Error).message;
+    } finally { this.copying = false; }
+  }
+  private commandChange(entity: string, e: CustomEvent) {
+    e.stopPropagation();
+    if (!this.draft) return;
+    const value = e.detail.value;
+    const commands = structuredClone(this.draft.commands ?? this.draft.actions ?? []);
+    const index = commands.findIndex(c => c.entity_id === entity);
+    if (!value.service || value.service === 'untouched') {
+      if (index >= 0) commands.splice(index, 1);
+    } else {
+      const field = value.service === 'set_cover_position' ? 'position' : value.service === 'set_cover_tilt_position' ? 'tilt_position' : undefined;
+      const c = {service:value.service,entity_id:entity,...(field ? {[field]:value.value} : {})} as BlindCommand;
+      if (index >= 0) commands[index] = c; else commands.push(c);
+    }
+    const next = {...this.draft};
+    delete next.actions;
+    if (commands.length) next.commands = commands; else delete next.commands;
+    this.draft = next;
   }
   private removeItem() {
     if (!this.removing) return;
@@ -235,6 +277,10 @@ export class KioskBlindPresetsEditor extends LitElement {
       font-size: 14px;
       margin: 8px 0;
     }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
   `;
   render() {
     if (!this.config) return nothing;
@@ -267,10 +313,29 @@ export class KioskBlindPresetsEditor extends LitElement {
           ${blindPicture(this.config.blinds, this.draft.positions)}
         </div>
         <p>
-          Absolute percentages down from the top. Sequential blinds require top
-          0 or bottom 100. Saving changes this card only; it does not move
-          blinds.
+          Pictures use percentages down from the top. Without native overrides,
+          sequential blinds require top 0 or bottom 100. Native overrides match
+          reported command attributes, not measured rail geometry. Saving never moves blinds.
         </p>
+        <ha-form data-script .hass=${this.hass} .data=${{script:this.sourceScript}}
+          .schema=${[{name:'script',selector:{entity:{filter:{domain:'script'}}}}]}
+          .computeLabel=${() => 'Copy from existing script (optional)'}
+          @value-changed=${(e: CustomEvent) => {e.stopPropagation(); this.sourceScript = e.detail.value.script ?? ''; this.error = '';}}
+        ></ha-form>
+        <button ?disabled=${!this.sourceScript || this.copying || !this.hass?.callWS} @click=${() => this.copyCommands()}>Copy commands</button>
+        <p>Copies only simple cover actions into this draft. Review commands and picture, then Save. No script is run or linked.</p>
+        <h3>Native override (optional)</h3>
+        <p>With an override, only listed shades are commanded; all others are untouched. Removing the override restores sequential mode.</p>
+        ${this.config.blinds.map(b => {
+          const c = (this.draft!.commands ?? this.draft!.actions)?.find(c => c.entity_id === b.entity);
+          const numeric = c?.service === 'set_cover_position' || c?.service === 'set_cover_tilt_position';
+          return html`<ha-form data-command=${b.entity} .hass=${this.hass}
+            .data=${{service:c?.service ?? 'untouched',value:c?.service === 'set_cover_position' ? c.position : c?.service === 'set_cover_tilt_position' ? c.tilt_position : 0}}
+            .schema=${[{name:'service',selector:{select:{mode:'dropdown',options:[{value:'untouched',label:'Untouched (no native command)'},...nativeServices.map(value=>({value,label:value}))]}}},...(numeric ? [number('value',0,100)] : [])]}
+            .computeLabel=${(s: {name:string}) => s.name === 'service' ? (b.name || b.entity) : 'Native value (%)'}
+            @value-changed=${(e: CustomEvent) => this.commandChange(b.entity,e)}></ha-form>`;
+        })}
+        ${(this.draft.commands ?? this.draft.actions) ? html`<pre data-command-preview>${JSON.stringify(this.draft.commands ?? this.draft.actions,null,2)}</pre><button @click=${() => {const p = {...this.draft!};delete p.commands;delete p.actions;this.draft = p;}}>Remove override</button>` : nothing}
         ${this.config.blinds.map(
           (b, i) =>
             html`<h3>
@@ -289,7 +354,7 @@ export class KioskBlindPresetsEditor extends LitElement {
                   this.draft = p;
                 }}
               ></ha-form>`,
-        )}${problem ? html`<span role="status">${problem}</span>` : nothing}
+        )}${problem ? html`<span role="status">${problem}</span>` : nothing}${this.error ? html`<span role="status">${this.error}</span>` : nothing}
         <div class="actions">
           <button ?disabled=${!!problem} @click=${() => this.save()}>
             Save</button
