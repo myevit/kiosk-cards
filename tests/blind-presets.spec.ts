@@ -249,7 +249,7 @@ test("dispatches exactly one mapped command per nonmatching shade; no optimistic
   ).toHaveAttribute("aria-pressed", "false");
   await expect(
     page.getByRole("button", { name: "Bottom", exact: true }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await report(
     page,
     config.blinds.map(() => ({
@@ -319,52 +319,25 @@ test("validates all capabilities before dispatch, skips matching shades, maps ge
       ],
     ]);
 });
-test("global duplicate suppression, partial failure stops later dispatch, timeout and stale guards", async ({
-  page,
-}) => {
+test("sequential latest intent waits only for publish and cancels stale later commands", async ({page}) => {
   await mount(page);
-  await page.clock.install();
   await page.evaluate(() => {
-    const w = window as any;
-    w.hass.callService = (...a: any[]) => {
-      w.calls.push(a);
-      return new Promise((resolve, reject) => {
-        w.resolve = resolve;
-        w.reject = reject;
-      });
-    };
+    const w = window as any;w.waiters=[];
+    w.hass.callService = (...a:any[]) => {w.calls.push(a);return new Promise((resolve,reject)=>w.waiters.push({resolve,reject}))};
   });
-  await page.getByRole("button", { name: "Open", exact: true }).click();
-  await page.evaluate(() => {
-    const w = window as any;
-    for (let i = 0; i < 5; i++)
-      w.card.shadowRoot.querySelector("button").click();
-  });
-  expect(await page.evaluate(() => (window as any).calls.length)).toBe(1);
-  await page.evaluate(() => (window as any).reject(Error("no")));
-  await expectSilent(page, false, /Action failed/);
-  expect(await page.evaluate(() => (window as any).calls.length)).toBe(1);
-  await page.getByRole("button", { name: "Open", exact: true }).click();
-  await page.clock.fastForward(120001);
-  await expectSilent(page, false, /No confirmation/);
-  await page.evaluate(() => (window as any).resolve());
-  expect(await page.evaluate(() => (window as any).calls.length)).toBe(2);
-  await page.getByRole("button", { name: "Open", exact: true }).click();
-  await page.evaluate(() => {
-    const w = window as any;
-    w.card.setConfig(w.card.config);
-    w.resolve();
-  });
-  await expectSilent(page, false);
-  expect(await page.evaluate(() => (window as any).calls.length)).toBe(3);
-  await page.getByRole("button", { name: "Open", exact: true }).click();
-  await page.evaluate(() => {
-    const w = window as any;
-    w.card.remove();
-    w.resolve();
-  });
-  await page.waitForTimeout(20);
-  expect(await page.evaluate(() => (window as any).calls.length)).toBe(4);
+  await page.getByRole('button',{name:'Open',exact:true}).click();
+  await page.getByRole('button',{name:'Bottom',exact:true}).click();
+  expect(await page.evaluate(()=>(window as any).calls.length)).toBe(1);
+  await page.evaluate(()=>(window as any).waiters[0].reject(Error('stale')));
+  await expect.poll(()=>page.evaluate(()=>(window as any).calls.length)).toBe(2);
+  expect(await page.evaluate(()=>(window as any).calls[1])).toEqual(['cover','set_cover_tilt_position',{entity_id:'cover.example_left',tilt_position:100}]);
+  await expectSilent(page,true);
+  await expect(page.locator('.tile:disabled')).toHaveCount(0);
+  await page.evaluate(()=>{const w=window as any;w.card.setConfig(w.card.config);w.waiters[1].resolve()});
+  await expectSilent(page,false);expect(await page.evaluate(()=>(window as any).calls.length)).toBe(2);
+  await page.getByRole('button',{name:'Open',exact:true}).click();
+  await page.evaluate(()=>{const w=window as any;w.card.remove();w.waiters[2].resolve()});
+  expect(await page.evaluate(()=>(window as any).calls.length)).toBe(3);
 });
 test("native sequential decode, tolerance, moving/unknown never active; unrelated updates do not rerender", async ({
   page,
@@ -683,7 +656,7 @@ test("partial failure after first success never dispatches third; pending has no
   });
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await expectSilent(page, true);
-  await expect(page.locator(".tile:disabled")).toHaveCount(3);
+  await expect(page.locator(".tile:disabled")).toHaveCount(0);
 });
 test("stale pre-render click after reconfiguration cannot target new blinds", async ({
   page,
@@ -744,7 +717,7 @@ test("unavailable and successful states never render runtime feedback", async ({
   await expectSilent(page, false);
   await report(page, [{ current_position: 25, current_top_position: 0 }, { current_position: 25, current_top_position: 0 }, { current_position: 25, current_top_position: 0 }]);
   await page.getByRole("button", { name: "Open", exact: true }).click();
-  await expectSilent(page, true);
+  await expectSilent(page, false);
   await report(page, [{ current_position: 100, current_top_position: 0 }, { current_position: 100, current_top_position: 0 }, { current_position: 100, current_top_position: 0 }]);
   await expectSilent(page, false);
   expect(await page.evaluate(() => (window as any).calls)).toHaveLength(3);
@@ -770,6 +743,6 @@ test("old service rejection cannot release or overwrite a newer operation after 
   await page.getByRole("button", { name: "Bottom", exact: true }).click();
   await page.evaluate(() => (window as any).waiters[0].reject(Error("late")));
   await expectSilent(page, true);
-  await expect(page.locator(".tile:disabled")).toHaveCount(3);
+  await expect(page.locator(".tile:disabled")).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).calls.length)).toBe(2);
 });

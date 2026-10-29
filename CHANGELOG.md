@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.1
+
+- Send independent top/bottom targets back-to-back without motor-arrival waits, cold homing, or software clearance sequencing.
+- Retain range/capability validation, Ignore settings, publish error handling and measured-only selection.
+- Movement coordination belongs to the device controller; its protection behavior has not been independently verified.
+
 ## 0.9.0
 
 - Add per-preset Ignore this shade controls, preserving targets and excluding ignored shades from commands, readiness, completion and selection.
