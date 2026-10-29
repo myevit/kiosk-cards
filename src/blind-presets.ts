@@ -5,6 +5,7 @@ import { validateCommands, nativeAvailable, nativeMatches, type BlindCommand } f
 export interface BlindPosition {
   top: number;
   bottom: number;
+  ignored?: boolean;
   [key: string]: unknown;
 }
 export interface Blind {
@@ -41,6 +42,7 @@ export function blindPicture(blinds: Blind[], positions: BlindPosition[]) {
         left = x;
       x += w + 4;
       const p = positions[i] ?? { top: 0, bottom: 100 };
+      if (p.ignored) return svg`<g data-ignored opacity="0.35"><rect x=${left} y="12" width=${w} height="76" rx="1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 3"/></g>`;
       return svg`<g><rect x=${left} y="12" width=${w} height="76" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect data-fabric x=${left} y=${12 + Math.min(74, (76 * p.top) / 100)} width=${w} height=${Math.max(2, (76 * (p.bottom - p.top)) / 100)} rx="1" fill="currentColor"/></g>`;
     },
   )}</svg>`;
@@ -99,6 +101,7 @@ export function validateBlindConfig(c: BlindPresetsConfig) {
     if (!Array.isArray(p.positions) || p.positions.length !== c.blinds.length)
       throw Error("Each preset needs one position per blind");
     for (const v of p.positions) {
+      if (v && v.ignored !== undefined && typeof v.ignored !== 'boolean') throw Error('Ignored must be a boolean');
       if (
         !v ||
         ![v.top, v.bottom].every(
@@ -111,9 +114,14 @@ export function validateBlindConfig(c: BlindPresetsConfig) {
     }
   }
 }
+function includedCommands(p: BlindPreset, blinds?: Blind[]) {
+  const commands = p.commands ?? p.actions;
+  return commands?.filter(c => !blinds || !p.positions[blinds.findIndex(b => b.entity === c.entity_id)]?.ignored);
+}
 export function presetProblem(p: BlindPreset, blinds?: Blind[]) {
-  if (p.commands !== undefined || p.actions !== undefined) return '';
-  return p.positions.some((v, i) => blinds?.[i]?.mapping !== 'independent-tdbu' && v.top !== 0 && v.bottom !== 100)
+  if (!p.positions.some(v => !v.ignored)) return 'Include at least one shade';
+  if (p.commands !== undefined || p.actions !== undefined) return includedCommands(p,blinds)?.length ? '' : 'Include at least one native command';
+  return p.positions.some((v, i) => !v.ignored && blinds?.[i]?.mapping !== 'independent-tdbu' && v.top !== 0 && v.bottom !== 100)
     ? "Unsupported sequential TDBU position: top must be 0 or bottom must be 100."
     : "";
 }
@@ -153,11 +161,11 @@ function independentMatches(s: State | undefined, c: BlindCommand) {
 function safeToMove(s: State | undefined, c: BlindCommand) {
   if (c.service === 'set_cover_tilt_position') {
     const bottom = independentAxis(s,false);
-    return c.tilt_position === 0 || (bottom !== undefined && bottom >= c.tilt_position);
+    return c.tilt_position === 0 || (bottom !== undefined && !['OPEN','CLOSE'].includes(s?.attributes.motion_bottom) && bottom >= c.tilt_position);
   }
   if (c.service === 'set_cover_position') {
     const top = independentAxis(s,true);
-    return c.position === 0 || (top !== undefined && top <= 100-c.position);
+    return c.position === 0 || (top !== undefined && !['OPEN','CLOSE'].includes(s?.attributes.motion_top) && top <= 100-c.position);
   }
   return true;
 }
@@ -259,7 +267,100 @@ export class KioskBlindPresetsCard extends LitElement {
   private expected?: BlindPreset;
   private acknowledged = false;
   private waiting?: {step: PlanStep; resolve: (arrived: boolean) => void};
+  private railWaiters = new Set<{check: () => boolean; resolve: (ok: boolean) => void}>();
+  private railCancels = new Set<() => void>();
+  private independentRuntime() {
+    return this.config.blinds.every(b => b.mapping === 'independent-tdbu') &&
+      this.config.presets.every(p => p.commands === undefined && p.actions === undefined);
+  }
+  // Only uncancellable publishes live here; superseded goals never append to a FIFO.
+  private transports = new Map<string, Promise<unknown>>();
+  private async publishRail(step: PlanStep, live: () => boolean, cancelled: Promise<false>) {
+    const id = step.data.entity_id;
+    while (this.transports.has(id)) {
+      await Promise.race([this.transports.get(id), cancelled]);
+      if (!live()) return false;
+    }
+    if (!live()) return false;
+    const publish = Promise.resolve().then(() => {
+      if (!live()) return;
+      // Check at the actual dispatch boundary as well as before lane admission.
+      if (!this.commandAvailable(step.arrival!) || !safeToMove(this.hass.states[id],step.arrival!)) throw Error('Unsafe or unavailable');
+      const top = step.arrival!.service === 'set_cover_tilt_position';
+      this.pendingRails.set(id, {step, initial:independentAxis(this.hass.states[id],top), observed:false});
+      return this.hass.callService('cover',step.service,step.data);
+    });
+    // Catch separately: a stale failure cannot reject a newer goal waiting for the lane.
+    const settled = publish.catch(() => undefined);
+    this.transports.set(id, settled);
+    settled.then(() => { if (this.transports.get(id) === settled) { this.transports.delete(id); this.requestUpdate(); } });
+    await publish;
+    return live();
+  }
+  // A transmitted axis remains a physical barrier across goal cancellation,
+  // timeout, config save and removal. Only actual rail feedback releases it.
+  private pendingRails = new Map<string, {step: PlanStep; initial: number | undefined; observed: boolean}>();
+  private waitRail(check: () => boolean, live: () => boolean, cancelled: Promise<false>): Promise<boolean> {
+    if (!live()) return Promise.resolve(false);
+    if (check()) return Promise.resolve(true);
+    return new Promise(resolve => {
+      const waiter = {check: () => live() && check(), resolve};
+      this.railWaiters.add(waiter);
+      cancelled.then(() => { this.railWaiters.delete(waiter); resolve(false); });
+    });
+  }
+  private async runRails(p: BlindPreset, token: number) {
+    await Promise.allSettled(this.config.blinds.map(async (blind, index) => {
+      if (p.positions[index].ignored) return;
+      const stage = async (job: (live: () => boolean, cancelled: Promise<false>) => Promise<boolean>) => {
+        let active = true;
+        let cancel!: () => void;
+        const live = () => active && this.operation === token && this.isConnected;
+        const cancelled = new Promise<false>(resolve => { cancel = () => { active = false; resolve(false); }; });
+        this.railCancels.add(cancel);
+        const timer = setTimeout(cancel, 120000);
+        try { return await Promise.race([cancelled, job(live, cancelled)]); }
+        finally {
+          clearTimeout(timer);
+          this.railCancels.delete(cancel);
+          cancel();
+        }
+      };
+      try {
+        // Accept the new intent now, but never mistake a publish ACK or stale
+        // cached coordinates for completion of the already-transmitted axis.
+        if (!await stage(async (live, cancelled) => {
+          if (!await this.waitRail(() => !this.pendingRails.has(blind.entity),live,cancelled)) return false;
+          const transport = this.transports.get(blind.entity);
+          if (transport) await Promise.race([transport,cancelled]);
+          return live();
+        })) return;
+        if (this.operation !== token) return;
+        // Re-plan from measured coordinates after handoff, not the press-time
+        // snapshot. The entire preset was already preflighted before cancellation.
+        const steps = independentPlan(blind,this.hass.states[blind.entity],p.positions[index]);
+        for (const step of steps) {
+          if (!await stage(async (live, cancelled) => {
+            if (!live() || !this.commandAvailable(step.arrival!)) return false;
+            if (!await this.waitRail(() => safeToMove(this.hass.states[blind.entity],step.arrival!),live,cancelled)) return false;
+            if (!await this.publishRail(step,live,cancelled)) return false;
+            return this.waitRail(() => !this.pendingRails.has(blind.entity) && stepArrived(this.hass.states[blind.entity],step),live,cancelled);
+          })) return;
+        }
+      } catch {
+        if (this.operation === token) this.error = 'Action failed. Check device.';
+      }
+    }));
+    if (this.operation === token) {
+      this.busy = false;
+      this.expected = undefined;
+    }
+  }
   private invalidate() {
+    for (const cancel of this.railCancels) cancel();
+    this.railCancels.clear();
+    for (const waiter of this.railWaiters) waiter.resolve(false);
+    this.railWaiters.clear();
     this.waiting?.resolve(false);
     this.waiting = undefined;
     this.operation++;
@@ -287,6 +388,21 @@ export class KioskBlindPresetsCard extends LitElement {
     this.finishIfConfirmed();
   }
   private finishIfConfirmed() {
+    for (const [id, pending] of this.pendingRails) {
+      const state = this.hass.states[id];
+      const top = pending.step.arrival!.service === 'set_cover_tilt_position';
+      // HA republishes setters and target echoes too. An unchanged raw remnant
+      // is not a new actual report; require rail change or observed motion.
+      const actual = independentAxis(state,top);
+      pending.observed ||= (actual !== undefined && actual !== pending.initial) || ['OPEN','CLOSE'].includes(state?.attributes[top ? 'motion_top' : 'motion_bottom']);
+      if (pending.observed && independentMatches(state,pending.step.arrival!)) this.pendingRails.delete(id);
+    }
+    for (const waiter of this.railWaiters) {
+      if (waiter.check()) {
+        this.railWaiters.delete(waiter);
+        waiter.resolve(true);
+      }
+    }
     if (this.waiting && stepArrived(this.hass.states[this.waiting.step.data.entity_id], this.waiting.step)) {
       const waiting = this.waiting;
       this.waiting = undefined;
@@ -300,10 +416,17 @@ export class KioskBlindPresetsCard extends LitElement {
     )
       this.invalidate();
   }
+  private hasPending(p: BlindPreset) {
+    const commands = includedCommands(p,this.config.blinds);
+    const pending = (entity: string) => this.pendingRails.has(entity) || this.transports.has(entity);
+    return commands ? commands.some(c => pending(c.entity_id))
+      : this.config.blinds.some((b,i) => !p.positions[i].ignored && pending(b.entity));
+  }
   private presetMatches(p: BlindPreset) {
-    const commands = p.commands ?? p.actions;
+    if (presetProblem(p,this.config.blinds) || this.hasPending(p)) return false;
+    const commands = includedCommands(p,this.config.blinds);
     return commands ? commands.length > 0 && commands.every(c => this.commandMatches(c))
-      : this.config.blinds.every((b,i) => matches(this.hass.states[b.entity], p.positions[i], b));
+      : this.config.blinds.every((b, i) => p.positions[i].ignored || matches(this.hass.states[b.entity], p.positions[i], b));
   }
   private isIndependent(entity: string) {
     return this.config.blinds.find(b => b.entity === entity)?.mapping === 'independent-tdbu';
@@ -320,9 +443,12 @@ export class KioskBlindPresetsCard extends LitElement {
   }
   private plan(p: BlindPreset): PlanStep[] {
     validateBlindConfig(this.config);
-    const commands = p.commands ?? p.actions;
+    if (presetProblem(p, this.config.blinds)) throw Error(presetProblem(p, this.config.blinds));
+    if (!this.independentRuntime() && this.hasPending(p)) throw Error('Previous axis is not confirmed');
+    const commands = includedCommands(p,this.config.blinds);
     if (commands) {
-      const validated = validateCommands(commands, this.config.blinds.map(b => b.entity));
+      // Full schema validation happens before ignored entities are filtered.
+      const validated = commands;
       if (!validated.every(c => this.commandAvailable(c))) throw Error('Required native attribute or capability unavailable');
       return validated.flatMap(c => {
         const {service, ...data} = c;
@@ -331,9 +457,17 @@ export class KioskBlindPresetsCard extends LitElement {
     }
     if (presetProblem(p, this.config.blinds)) throw Error(presetProblem(p, this.config.blinds));
     return this.config.blinds.flatMap((b, i) => {
+      if (p.positions[i].ignored) return [];
       const s = this.hass.states[b.entity],
         v = p.positions[i];
-      if (b.mapping === 'independent-tdbu') return independentPlan(b,s,v);
+      if (b.mapping === 'independent-tdbu') {
+        // A pending axis can invalidate every press-time skip. Validate the
+        // complete envelope before cancelling the old goal or publishing any
+        // entity; compute the measured minimal plan only after handoff.
+        const snapshot = this.pendingRails.has(b.entity) && s
+          ? {...s,attributes:{...s.attributes,rails_known:false}} : s;
+        return independentPlan(b,snapshot,v);
+      }
       if (!available(s)) throw Error("Blind unavailable. Check device.");
       let service: string,
         capability: number,
@@ -362,7 +496,7 @@ export class KioskBlindPresetsCard extends LitElement {
   private async activate(p: BlindPreset, e: MouseEvent) {
     e.stopPropagation();
     if (
-      this.busy ||
+      (this.busy && !this.independentRuntime()) ||
       e.detail > 1 ||
       !this.isConnected ||
       !this.config.presets.includes(p)
@@ -376,11 +510,13 @@ export class KioskBlindPresetsCard extends LitElement {
       return;
     }
     this.error = "";
-    if (!plan.length) return;
+    if (this.independentRuntime()) this.invalidate();
+    if (!plan.length && (!this.independentRuntime() || !this.hasPending(p))) return;
     const token = ++this.operation;
     this.busy = true;
     this.expected = p;
     this.acknowledged = false;
+    if (this.independentRuntime()) return this.runRails(p, token);
     try {
       for (const command of plan) {
         if (this.operation !== token || !this.isConnected) return;
@@ -493,8 +629,8 @@ export class KioskBlindPresetsCard extends LitElement {
         ${this.config.presets.map((p) => {
           const problem =
             presetProblem(p, this.config.blinds) ||
-            (((p.commands ?? p.actions) ? (p.commands ?? p.actions)!.every(c => this.commandAvailable(c)) : this.config.blinds.every((b) =>
-              b.mapping === 'independent-tdbu' ? !!this.hass.states[b.entity] && this.hass.states[b.entity].state !== 'unavailable' : available(this.hass.states[b.entity]),
+            ((includedCommands(p,this.config.blinds)?.every(c => this.commandAvailable(c)) ?? this.config.blinds.every((b,i) =>
+              p.positions[i].ignored || (b.mapping === 'independent-tdbu' ? !!this.hass.states[b.entity] && this.hass.states[b.entity].state !== 'unavailable' : available(this.hass.states[b.entity])),
             ))
               ? ""
               : "Blind unavailable");
@@ -505,7 +641,7 @@ export class KioskBlindPresetsCard extends LitElement {
             type="button"
             class=${`tile ${active ? "active" : ""}`}
             aria-label=${p.name}
-            ?disabled=${!!problem || this.busy}
+            ?disabled=${!!problem || (this.busy && !this.independentRuntime())}
             @click=${(e: MouseEvent) => this.activate(p, e)}
             @keydown=${(e: KeyboardEvent) => {
               if (e.repeat) e.preventDefault();

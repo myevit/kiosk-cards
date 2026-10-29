@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0
+
+- Add per-preset Ignore this shade controls, preserving targets and excluding ignored shades from commands, readiness, completion and selection.
+- Remove script-copy and native-override editor controls; retain existing inline recipes for compatibility.
+- Run independent shade workers so missing feedback from one does not starve others. Accept newer independent preset intents without a disabled-grid refresh trap.
+- Preserve already-transmitted movement barriers during safe handoff; never promote target echoes into measured arrival.
+- Test realistic no-op/missing feedback and consecutive preset presses. Unknown native hardware state remains an explicit commissioning limitation.
+
 ## 0.8.0
 
 - Add independent two-rail mapping and per-blind editor selection; support absolute middle-band targets without scenes or explicit command overrides.
