@@ -1,6 +1,7 @@
 import { LitElement, html, svg, nothing, css } from "lit";
 import { kioskStyles } from "./design.js";
 import type { Hass, State } from "./types.js";
+import { validateCommands, nativeAvailable, nativeMatches, type BlindCommand } from './blind-commands.js';
 export interface BlindPosition {
   top: number;
   bottom: number;
@@ -17,6 +18,8 @@ export interface BlindPreset {
   id: string;
   name: string;
   positions: BlindPosition[];
+  commands?: BlindCommand[];
+  actions?: BlindCommand[];
   [key: string]: unknown;
 }
 export interface BlindPresetsConfig {
@@ -90,6 +93,9 @@ export function validateBlindConfig(c: BlindPresetsConfig) {
     )
       throw Error("Presets need unique IDs and accessible names");
     ids.add(p.id);
+    if (p.commands !== undefined && p.actions !== undefined) throw Error('Use commands or actions, not both');
+    if (p.commands !== undefined || p.actions !== undefined)
+      validateCommands(p.commands ?? p.actions, c.blinds.map(b => b.entity));
     if (!Array.isArray(p.positions) || p.positions.length !== c.blinds.length)
       throw Error("Each preset needs one position per blind");
     for (const v of p.positions) {
@@ -106,6 +112,7 @@ export function validateBlindConfig(c: BlindPresetsConfig) {
   }
 }
 export function presetProblem(p: BlindPreset) {
+  if (p.commands !== undefined || p.actions !== undefined) return '';
   return p.positions.some((v) => v.top !== 0 && v.bottom !== 100)
     ? "Unsupported sequential TDBU position: top must be 0 or bottom must be 100."
     : "";
@@ -223,14 +230,26 @@ export class KioskBlindPresetsCard extends LitElement {
       this.busy &&
       this.acknowledged &&
       this.expected &&
-      this.config.blinds.every((b, i) =>
-        matches(this.hass.states[b.entity], this.expected!.positions[i]),
-      )
+      this.presetMatches(this.expected)
     )
       this.invalidate();
   }
+  private presetMatches(p: BlindPreset) {
+    const commands = p.commands ?? p.actions;
+    return commands ? commands.length > 0 && commands.every(c => nativeMatches(this.hass.states[c.entity_id], c))
+      : this.config.blinds.every((b,i) => matches(this.hass.states[b.entity], p.positions[i]));
+  }
   private plan(p: BlindPreset) {
     validateBlindConfig(this.config);
+    const commands = p.commands ?? p.actions;
+    if (commands) {
+      const validated = validateCommands(commands, this.config.blinds.map(b => b.entity));
+      if (!validated.every(c => nativeAvailable(this.hass.states[c.entity_id], c))) throw Error('Required native attribute or capability unavailable');
+      return validated.flatMap(c => {
+        const {service, ...data} = c;
+        return nativeMatches(this.hass.states[c.entity_id], c) ? [] : [{service, data: data as Record<string, any>}];
+      });
+    }
     if (presetProblem(p)) throw Error(presetProblem(p));
     return this.config.blinds.flatMap((b, i) => {
       const s = this.hass.states[b.entity],
@@ -291,7 +310,7 @@ export class KioskBlindPresetsCard extends LitElement {
     try {
       for (const command of plan) {
         if (this.operation !== token || !this.isConnected) return;
-        if (!available(this.hass.states[command.data.entity_id]))
+        if ((p.commands ?? p.actions) ? !nativeAvailable(this.hass.states[command.data.entity_id], {service:command.service,...command.data} as BlindCommand) : !available(this.hass.states[command.data.entity_id]))
           throw Error("Unavailable");
         await this.hass.callService("cover", command.service, command.data);
       }
@@ -387,16 +406,14 @@ export class KioskBlindPresetsCard extends LitElement {
         ${this.config.presets.map((p) => {
           const problem =
             presetProblem(p) ||
-            (this.config.blinds.every((b) =>
+            (((p.commands ?? p.actions) ? (p.commands ?? p.actions)!.every(c => nativeAvailable(this.hass.states[c.entity_id],c)) : this.config.blinds.every((b) =>
               available(this.hass.states[b.entity]),
-            )
+            ))
               ? ""
               : "Blind unavailable");
           const active =
             !problem &&
-            this.config.blinds.every((b, i) =>
-              matches(this.hass.states[b.entity], p.positions[i]),
-            );
+            this.presetMatches(p);
           return html`<button
             type="button"
             class=${`tile ${active ? "active" : ""}`}

@@ -1,6 +1,6 @@
 # Picture-only blind preset matrix
 
-`custom:kiosk-blind-presets-card` is **one composite card**. Each picture is a whole native button controlling a preset for all configured blinds. Names are accessible labels, never production tile captions. There is no long-hold configuration or browser-local preset storage. Use Home Assistant's standard visual card editor.
+`custom:kiosk-blind-presets-card` is **one composite card**. Each picture is a whole native button showing all configured blinds; explicit native overrides can command only a listed subset. Names are accessible labels, never production tile captions. There is no long-hold configuration or browser-local preset storage. Use Home Assistant's standard visual card editor.
 
 ```yaml
 type: custom:kiosk-blind-presets-card
@@ -49,7 +49,7 @@ All example entities are synthetic. No scripts, scenes, helpers, additional reso
 - `rows`, `columns`: integers 1–12. Their product is the maximum preset count. Empty slots preserve the chosen matrix shape. Columns wrap at narrow widths to preserve 44px touch targets. Rows are content-sized in native Sections; an explicit fixed HA `grid_options.rows` can clip a taller matrix.
 - `presets`: ordered list with unique nonempty `id`, nonempty accessible `name`, and one `positions` item per blind, in blind order. Coordinates are finite numbers 0–100 with `top <= bottom`.
 - Coordinates are **absolute percentages down from the top** of the window, not HA service percentages. `0/0` means fabric gathered at the top; `0/100` fully closed; `100/100` gathered at the bottom. A thin gathered fabric strip is still drawn at either endpoint.
-- Only sequential positions with `top == 0` **or** `bottom == 100` can be dispatched. Structurally valid middle bands such as `30/80` are retained and drawn, but their entire preset is disabled. Explanations and validation errors appear only in the editor, never on production buttons or tooltips. Targets are never silently replaced or converted.
+- Without an explicit native override, only sequential positions with `top == 0` **or** `bottom == 100` can be dispatched. Structurally valid middle bands such as `30/70` are retained and drawn, but disabled in default mode. Explicit commands permit such illustrations without deriving any native action from them. Explanations and validation errors appear only in the editor, never on production buttons or tooltips. Targets are never silently replaced or converted.
 - Unknown config fields, HA `grid_options`, and HA `visibility` are preserved by the editor.
 
 ## Verified sequential converter contract
@@ -67,6 +67,38 @@ The deployed converter reports bottom opening in `current_position`. When it is 
 
 Reported coordinates select an active white tile with theme-accent art only when **every** blind matches within 2 percentage points and none reports `opening`, `closing`, `unknown`, or `unavailable`. The tolerance accommodates integer raw-position quantization. No requested/optimistic state is displayed as matched.
 
+## Explicit native command contract
+
+An optional per-preset `commands` array (alias `actions`, never both) replaces the entire sequential execution plan. Each entry is one native command with one configured `entity_id`. The array must be nonempty, with at most one entry per entity, even across different axes. Unlisted blinds are **untouched**, not implicitly closed or moved to their illustration coordinates. All picture positions remain required and obey `0 <= top <= bottom <= 100`.
+
+```yaml
+# Example only: choose actions from your own working recipe; this is NOT
+# an automatic or physically verified mapping from a 30/70 drawing.
+id: custom_picture
+name: Custom picture
+positions:
+  - { top: 30, bottom: 70 }
+  - { top: 30, bottom: 100 }
+  - { top: 30, bottom: 100 }
+commands:
+  - service: set_cover_tilt_position
+    entity_id: cover.example_left
+    tilt_position: 30
+```
+
+Allowed entries, with no extra fields:
+
+| `service` | Additional field | Capability | Native feedback |
+| --- | --- | --- | --- |
+| `open_cover` | none | 1 | `current_position: 100` |
+| `close_cover` | none | 2 | `current_position: 0` |
+| `set_cover_position` | `position: 0..100` | 4 | `current_position` equals requested position |
+| `set_cover_tilt_position` | `tilt_position: 0..100` | 128 | `current_tilt_position` equals requested tilt |
+
+Values must be finite literal numbers. Only commanded entities are checked for availability, capabilities, and native feedback. Missing required attributes or capabilities fail closed before any dispatch, including for an already-matched target. The other axis need not be available. Matching uses a two-point tolerance and stable `open`/`closed` states; `opening`, `closing`, unknown, or unavailable never match. A highlighted explicit preset means its **native command conditions** match, not that independently measured fabric rails match the drawing. Picture coordinates are never consulted for explicit selection or completion. Acknowledgement alone is not arrival or selection.
+
+The importer solves reuse of actual working cover actions. A known working script proves the recipe, **not arbitrary 30/70 rail geometry**. Select the source yourself; the card never guesses a script from a name or picture and never binds a preset to an arbitrary existing script. It does not send both axes to manufacture a middle band.
+
 ## Editor
 
 The normal HA card editor uses real `ha-form` entity, text, and numeric selectors:
@@ -75,16 +107,17 @@ The normal HA card editor uses real `ha-form` entity, text, and numeric selector
 2. Add blinds explicitly. Existing positions are retained; the new coordinate defaults to closed (`0/100`) and is editable.
 3. Set rows/columns. Growing preserves existing data. Shrinking below the stored preset count is refused until presets are explicitly deleted.
 4. Click a picture to open its item editor. Edit its accessible name and each blind's top/bottom coordinates while watching the picture preview. **Save** emits normal `config-changed`; **Cancel** discards the draft.
-5. Correct unsupported middle bands in the item editor. An explanation is shown and Save stays disabled until that preset is supported. Other stored presets are unaffected.
-6. Add/reorder presets as needed. Removing a blind or preset requires an explicit confirmation; blind removal deletes that blind's coordinates from all presets. The last blind cannot be removed.
+5. For an existing working recipe, explicitly choose a script in the native script entity selector and press **Copy commands**. The editor reads `hass.callWS({type: 'script/config', entity_id: selectedScript})`, including HA's `{config: {sequence: [...]}}` response wrapper. It never runs or changes the script. Only flat sequences with literal `action` or `service` names for the four supported `cover.*` actions, plus `target.entity_id` or `data.entity_id`, are accepted. Entity arrays expand in source order. Templates, delays, branches, other domains/services, area/device selectors, extra action/data fields, duplicate entities/axes, and nonconfigured covers reject the whole import, leaving the draft unchanged. All commands are previewed inline; only item **Save** stores the inline definition. **Cancel** discards it. No source script ID or runtime dependency is saved.
+6. Alternatively set each configured blind's native action and numeric value directly in its native form. Unlisted shades display **Untouched (no native command)**. **Remove override** returns to default sequential mode. In default mode, correct unsupported middle bands before Save is enabled. Importing changes commands only, never the user-authored picture. Other stored presets are unaffected.
+7. Add/reorder presets as needed. Removing a blind or preset requires an explicit confirmation; blind removal deletes that blind's coordinates from all presets. Remove any command referencing that entity before removing or changing the configured entity; references are never silently rebound. The last blind cannot be removed.
 
 Editing, previewing, saving, cancelling, and removing send **zero** cover commands. Presets live only in card config, under normal dashboard storage and HA editor permissions.
 
 ## Command safety without runtime messages
 
-Before the first command, the **entire** plan is validated: all entity IDs, mappings, coordinates, availability, and required capabilities, including already-matched targets. Matched blinds are skipped. There is never a two-axis command pair, automatic retry, or rollback. Commands are awaited in blind order. On partial failure, later commands stop; successful earlier commands are not undone.
+Before the first command, the **entire** plan is validated: all entity IDs, mappings, coordinates, availability, and required capabilities, including already-matched targets. Matched blinds are skipped. There is never a two-axis command pair, automatic retry, or rollback. Commands are awaited in blind order for default mode, or explicit array order for overrides. On partial failure, later commands stop; successful earlier commands are not undone.
 
-One global pending operation blocks every tile silently, without progress text, spinners, dimming, or geometry changes. It ends only after services acknowledge and reported coordinates confirm the preset; the shared 12-second no-confirmation timeout releases the card silently. Failures also release the lock without rendering a message, status node, or tooltip. Internal errors are not evidence that no physical movement occurred. Check the device before issuing another command. Reconfiguration and disconnect invalidate pending continuations; late acknowledgements/errors cannot dispatch later stale commands. Keyboard repeats, inner SVG taps, holds, and double click cannot create multiple plans for one gesture.
+One global pending operation blocks every tile silently, without progress text, spinners, dimming, or geometry changes. It ends only after services acknowledge and native reported conditions confirm the preset (sequential coordinates in default mode, command attributes for explicit overrides); the shared 12-second no-confirmation timeout releases the card silently. Failures also release the lock without rendering a message, status node, or tooltip. Internal errors are not evidence that no physical movement occurred. Check the device before issuing another command. Reconfiguration and disconnect invalidate pending continuations; late acknowledgements/errors cannot dispatch later stale commands. Keyboard repeats, inner SVG taps, holds, and double click cannot create multiple plans for one gesture.
 
 ## Appearance
 

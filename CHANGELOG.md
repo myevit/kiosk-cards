@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0
+
+- Picture presets can store explicit native cover commands, independently of picture coordinates, with reported native-state matching and whole-plan preflight.
+- The visual editor can copy simple literal cover recipes from an existing script into the preset draft; no source-script link or runtime scene/script dependency is retained.
+- Native command controls, atomic import validation and draft Save/Cancel preserve author-selected pictures and reject unsafe or conflicting actions.
+- Retained buttons-only output, flush-edge layout and existing automatic sequential mapping for compatible presets.
+
 ## 0.6.1
 
 - Blind preset controls render buttons only: no runtime status text, error captions or tooltips. Editor validation stays available.

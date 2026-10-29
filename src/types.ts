@@ -7,6 +7,7 @@ export interface State {
   last_reported?: string;
 }
 export interface Hass {
+  callWS?: <T = any>(message: Record<string, unknown>) => Promise<T>;
   states: Record<string, State>;
   entities?: Record<string, any>;
   devices?: Record<string, any>;
