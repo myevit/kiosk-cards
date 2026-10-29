@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0
+
+- Composite picture-only blind preset card with configurable shade order/proportions and preset grid dimensions.
+- Native visual editor with per-preset preview, draft Save/Cancel, entity selection, reordering and guarded removal.
+- Direct sequential-TDBU cover control without scenes or scripts; preflight, global pending lock, report-based selection and no automatic retry.
+- Unsupported rail combinations remain visible and editable but cannot actuate. Existing kiosk theme tokens and cards are preserved.
+- Synthetic browser coverage plus isolated native Home Assistant grid/editor verification.
+
 ## 0.4.0
 
 - Door/contact/cover plus independent linked-lock observations, original icon/state priority and explicit native action overrides.
