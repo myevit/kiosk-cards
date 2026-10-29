@@ -49,7 +49,7 @@ All example entities are synthetic. No scripts, scenes, helpers, additional reso
 - `rows`, `columns`: integers 1–12. Their product is the maximum preset count. Empty slots preserve the chosen matrix shape. Columns wrap at narrow widths to preserve 44px touch targets. Rows are content-sized in native Sections; an explicit fixed HA `grid_options.rows` can clip a taller matrix.
 - `presets`: ordered list with unique nonempty `id`, nonempty accessible `name`, and one `positions` item per blind, in blind order. Coordinates are finite numbers 0–100 with `top <= bottom`.
 - Coordinates are **absolute percentages down from the top** of the window, not HA service percentages. `0/0` means fabric gathered at the top; `0/100` fully closed; `100/100` gathered at the bottom. A thin gathered fabric strip is still drawn at either endpoint.
-- Only sequential positions with `top == 0` **or** `bottom == 100` can be dispatched. Structurally valid middle bands such as `30/80` are retained and drawn, but their entire preset is disabled with an explanation. They are never silently replaced or converted to a different target.
+- Only sequential positions with `top == 0` **or** `bottom == 100` can be dispatched. Structurally valid middle bands such as `30/80` are retained and drawn, but their entire preset is disabled. Explanations and validation errors appear only in the editor, never on production buttons or tooltips. Targets are never silently replaced or converted.
 - Unknown config fields, HA `grid_options`, and HA `visibility` are preserved by the editor.
 
 ## Verified sequential converter contract
@@ -80,15 +80,15 @@ The normal HA card editor uses real `ha-form` entity, text, and numeric selector
 
 Editing, previewing, saving, cancelling, and removing send **zero** cover commands. Presets live only in card config, under normal dashboard storage and HA editor permissions.
 
-## Command safety and feedback
+## Command safety without runtime messages
 
 Before the first command, the **entire** plan is validated: all entity IDs, mappings, coordinates, availability, and required capabilities, including already-matched targets. Matched blinds are skipped. There is never a two-axis command pair, automatic retry, or rollback. Commands are awaited in blind order. On partial failure, later commands stop; successful earlier commands are not undone.
 
-One global pending operation blocks every tile silently, without progress text, dimming, or geometry changes. It ends only after services acknowledge and reported coordinates confirm the preset; the shared 12-second no-confirmation timeout releases the card with a short error. An error is not evidence that no physical movement occurred. Check the device before issuing another command. Reconfiguration and disconnect invalidate pending continuations; late acknowledgements/errors cannot dispatch later stale commands. Keyboard repeats, inner SVG taps, holds, and double click cannot create multiple plans for one gesture.
+One global pending operation blocks every tile silently, without progress text, spinners, dimming, or geometry changes. It ends only after services acknowledge and reported coordinates confirm the preset; the shared 12-second no-confirmation timeout releases the card silently. Failures also release the lock without rendering a message, status node, or tooltip. Internal errors are not evidence that no physical movement occurred. Check the device before issuing another command. Reconfiguration and disconnect invalidate pending continuations; late acknowledgements/errors cannot dispatch later stale commands. Keyboard repeats, inner SVG taps, holds, and double click cannot create multiple plans for one gesture.
 
 ## Appearance
 
-The outer container is transparent; existing dashboard wallpaper remains visible. There is no bundled wallpaper. Padding is 16px, gaps 12px, default tile ratio 1.21333. At 420px card width, matrix content is 388px wide and 324px tall (356px including padding), with approximately 121.33 × 100px tiles. Illustration widths follow `blinds[].width`, such as narrow–wide–narrow for 1/2/1.
+The outer container is transparent; existing dashboard wallpaper remains visible. There is no bundled wallpaper. Perimeter padding is zero, gaps are 12px, and the default tile ratio is 1.21333. A three-by-three matrix at 420px card width is approximately 350.37px tall, with 132 × 108.79px tiles (subject to browser subpixel rounding). The first tile starts at the matrix origin and the last tile meets its right/bottom edges. Illustration widths follow `blinds[].width`, such as narrow–wide–narrow for 1/2/1.
 
 Shared `--kiosk-background`, `--kiosk-active-background`, `--kiosk-radius` (HA radius fallback, then 14px), `--kiosk-glyph`, and `--kiosk-icon-color` tokens apply; active artwork falls back to `--accent-color`. Set `--kiosk-radius: 14px` in your theme for the approved 14px radius. The card has focus-visible and pressed feedback. No extra title, status caption, or preset text is visible on production tiles.
 
