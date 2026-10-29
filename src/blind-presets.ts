@@ -11,7 +11,7 @@ export interface Blind {
   entity: string;
   name?: string;
   width?: number;
-  mapping?: "sequential-tdbu";
+  mapping?: "sequential-tdbu" | "independent-tdbu";
   [key: string]: unknown;
 }
 export interface BlindPreset {
@@ -76,8 +76,8 @@ export function validateBlindConfig(c: BlindPresetsConfig) {
         b.width > 10)
     )
       throw Error("Blind widths must be greater than 0 and at most 10");
-    if (b.mapping !== undefined && b.mapping !== "sequential-tdbu")
-      throw Error("Only sequential-tdbu mapping is supported");
+    if (b.mapping !== undefined && !['sequential-tdbu', 'independent-tdbu'].includes(b.mapping))
+      throw Error("Choose sequential-tdbu or independent-tdbu mapping");
   }
   if (!Array.isArray(c.presets) || c.presets.length > c.rows * c.columns)
     throw Error("Remove presets before shrinking the grid");
@@ -111,9 +111,9 @@ export function validateBlindConfig(c: BlindPresetsConfig) {
     }
   }
 }
-export function presetProblem(p: BlindPreset) {
+export function presetProblem(p: BlindPreset, blinds?: Blind[]) {
   if (p.commands !== undefined || p.actions !== undefined) return '';
-  return p.positions.some((v) => v.top !== 0 && v.bottom !== 100)
+  return p.positions.some((v, i) => blinds?.[i]?.mapping !== 'independent-tdbu' && v.top !== 0 && v.bottom !== 100)
     ? "Unsupported sequential TDBU position: top must be 0 or bottom must be 100."
     : "";
 }
@@ -130,7 +130,65 @@ function available(s?: State) {
     )
   );
 }
-function matches(s: State | undefined, p: BlindPosition) {
+function independentAxis(s: State | undefined, top: boolean): number | undefined {
+  // These source-unique fields are real rail measurements. Native HA fields may
+  // still contain the old sequential converter's cached, derived scalar values.
+  const value = s?.attributes[top ? 'rail_top' : 'rail_bottom'];
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100 ? value : undefined;
+}
+function independentMatches(s: State | undefined, c: BlindCommand) {
+  // A partial measured rail can arrive while the global cover is still unknown.
+  if (!s || !['open', 'closed', 'unknown'].includes(s.state)) return false;
+  const moving = (top: boolean) => ['OPEN','CLOSE'].includes(s.attributes[top ? 'motion_top' : 'motion_bottom']);
+  if (c.service === 'open_cover' || c.service === 'close_cover') {
+    const t = independentAxis(s,true), b = independentAxis(s,false);
+    return s.attributes.rails_known !== false && t !== undefined && b !== undefined && !moving(true) && !moving(false) && Math.abs(t) <= 2 && Math.abs(b-(c.service === 'open_cover' ? 0 : 100)) <= 2 && (c.service !== 'close_cover' || s.state === 'closed');
+  }
+  const top = c.service === 'set_cover_tilt_position';
+  const measured = independentAxis(s, top);
+  if (measured === undefined || moving(top)) return false;
+  const expected = top ? c.tilt_position : c.position;
+  return Math.abs((top ? measured : 100-measured) - expected!) <= 2;
+}
+function safeToMove(s: State | undefined, c: BlindCommand) {
+  if (c.service === 'set_cover_tilt_position') {
+    const bottom = independentAxis(s,false);
+    return c.tilt_position === 0 || (bottom !== undefined && bottom >= c.tilt_position);
+  }
+  if (c.service === 'set_cover_position') {
+    const top = independentAxis(s,true);
+    return c.position === 0 || (top !== undefined && top <= 100-c.position);
+  }
+  return true;
+}
+type PlanStep = {service: string; data: Record<string, any>; arrival?: BlindCommand; safeFor?: BlindCommand};
+function stepArrived(s: State | undefined, step: PlanStep) {
+  return !!step.arrival && independentMatches(s,step.arrival) && (!step.safeFor || safeToMove(s,step.safeFor));
+}
+function independentPlan(b: Blind, s: State | undefined, p: BlindPosition): PlanStep[] {
+  if (!s || !['open','closed','opening','closing','unknown'].includes(s.state)) throw Error('Independent blind unavailable');
+  const top: BlindCommand = {service:'set_cover_tilt_position', entity_id:b.entity, tilt_position:p.top};
+  const bottom: BlindCommand = {service:'set_cover_position', entity_id:b.entity, position:100-p.bottom};
+  const currentTop = independentAxis(s,true), currentBottom = independentAxis(s,false);
+  const known = s.attributes.rails_known !== false && currentTop !== undefined && currentBottom !== undefined;
+  let commands: BlindCommand[];
+  if (!known) {
+    // Always establish a safe lower boundary before moving an unknown top.
+    // Do not filter this sequence against cached pre-initialization targets.
+    commands = [{service:'set_cover_position',entity_id:b.entity,position:0},top,...(p.bottom === 100 ? [] : [bottom])];
+  } else {
+    const ordered = p.top > currentBottom ? [bottom,top] : [top,bottom];
+    commands = ordered.filter((c,i) => !independentMatches(s,c) || (i === 0 && !safeToMove(s,ordered[1])));
+  }
+  const features = s.attributes.supported_features;
+  if (typeof features !== 'number' || !Number.isInteger(features) || commands.some(c => !(features & (c.service === 'set_cover_tilt_position' ? 128 : 4)))) throw Error('Required independent capability unavailable');
+  return commands.map((c,i) => {
+    const {service, ...data} = c;
+    return {service,data,arrival:c,safeFor:commands[i+1]};
+  });
+}
+function matches(s: State | undefined, p: BlindPosition, b?: Blind) {
+  if (b?.mapping === 'independent-tdbu') return s?.attributes.rails_known !== false && independentMatches(s, {service:'set_cover_tilt_position',entity_id:b.entity,tilt_position:p.top}) && independentMatches(s, {service:'set_cover_position',entity_id:b.entity,position:100-p.bottom});
   return (
     available(s) &&
     !["opening", "closing"].includes(s!.state) &&
@@ -200,7 +258,10 @@ export class KioskBlindPresetsCard extends LitElement {
   private watchdog?: ReturnType<typeof setTimeout>;
   private expected?: BlindPreset;
   private acknowledged = false;
+  private waiting?: {step: PlanStep; resolve: (arrived: boolean) => void};
   private invalidate() {
+    this.waiting?.resolve(false);
+    this.waiting = undefined;
     this.operation++;
     clearTimeout(this.watchdog);
     this.busy = false;
@@ -226,6 +287,11 @@ export class KioskBlindPresetsCard extends LitElement {
     this.finishIfConfirmed();
   }
   private finishIfConfirmed() {
+    if (this.waiting && stepArrived(this.hass.states[this.waiting.step.data.entity_id], this.waiting.step)) {
+      const waiting = this.waiting;
+      this.waiting = undefined;
+      waiting.resolve(true);
+    }
     if (
       this.busy &&
       this.acknowledged &&
@@ -236,24 +302,38 @@ export class KioskBlindPresetsCard extends LitElement {
   }
   private presetMatches(p: BlindPreset) {
     const commands = p.commands ?? p.actions;
-    return commands ? commands.length > 0 && commands.every(c => nativeMatches(this.hass.states[c.entity_id], c))
-      : this.config.blinds.every((b,i) => matches(this.hass.states[b.entity], p.positions[i]));
+    return commands ? commands.length > 0 && commands.every(c => this.commandMatches(c))
+      : this.config.blinds.every((b,i) => matches(this.hass.states[b.entity], p.positions[i], b));
   }
-  private plan(p: BlindPreset) {
+  private isIndependent(entity: string) {
+    return this.config.blinds.find(b => b.entity === entity)?.mapping === 'independent-tdbu';
+  }
+  private commandMatches(c: BlindCommand) {
+    return this.isIndependent(c.entity_id) ? independentMatches(this.hass.states[c.entity_id],c) : nativeMatches(this.hass.states[c.entity_id],c);
+  }
+  private commandAvailable(c: BlindCommand) {
+    const s = this.hass.states[c.entity_id];
+    if (!this.isIndependent(c.entity_id)) return nativeAvailable(s,c);
+    const features = s?.attributes.supported_features;
+    const capability = {open_cover:1,close_cover:2,set_cover_position:4,set_cover_tilt_position:128}[c.service];
+    return !!s && ['open','closed','opening','closing','unknown'].includes(s.state) && typeof features === 'number' && Number.isInteger(features) && (features & capability) !== 0;
+  }
+  private plan(p: BlindPreset): PlanStep[] {
     validateBlindConfig(this.config);
     const commands = p.commands ?? p.actions;
     if (commands) {
       const validated = validateCommands(commands, this.config.blinds.map(b => b.entity));
-      if (!validated.every(c => nativeAvailable(this.hass.states[c.entity_id], c))) throw Error('Required native attribute or capability unavailable');
+      if (!validated.every(c => this.commandAvailable(c))) throw Error('Required native attribute or capability unavailable');
       return validated.flatMap(c => {
         const {service, ...data} = c;
-        return nativeMatches(this.hass.states[c.entity_id], c) ? [] : [{service, data: data as Record<string, any>}];
+        return this.commandMatches(c) ? [] : [{service, data: data as Record<string, any>}];
       });
     }
-    if (presetProblem(p)) throw Error(presetProblem(p));
+    if (presetProblem(p, this.config.blinds)) throw Error(presetProblem(p, this.config.blinds));
     return this.config.blinds.flatMap((b, i) => {
       const s = this.hass.states[b.entity],
         v = p.positions[i];
+      if (b.mapping === 'independent-tdbu') return independentPlan(b,s,v);
       if (!available(s)) throw Error("Blind unavailable. Check device.");
       let service: string,
         capability: number,
@@ -301,18 +381,25 @@ export class KioskBlindPresetsCard extends LitElement {
     this.busy = true;
     this.expected = p;
     this.acknowledged = false;
-    this.watchdog = setTimeout(() => {
-      if (this.operation === token) {
-        this.invalidate();
-        this.error = "No confirmation. Check device.";
-      }
-    }, 12000);
     try {
       for (const command of plan) {
         if (this.operation !== token || !this.isConnected) return;
-        if ((p.commands ?? p.actions) ? !nativeAvailable(this.hass.states[command.data.entity_id], {service:command.service,...command.data} as BlindCommand) : !available(this.hass.states[command.data.entity_id]))
+        clearTimeout(this.watchdog);
+        this.watchdog = setTimeout(() => {
+          if (this.operation === token) {
+            this.invalidate();
+            this.error = 'No confirmation. Check device.';
+          }
+        }, 120000);
+        if (command.arrival ? !this.commandAvailable(command.arrival) : (p.commands ?? p.actions) ? !this.commandAvailable({service:command.service,...command.data} as BlindCommand) : !available(this.hass.states[command.data.entity_id]))
           throw Error("Unavailable");
+        if (command.arrival && !safeToMove(this.hass.states[command.data.entity_id],command.arrival)) throw Error('Unsafe rail boundary');
         await this.hass.callService("cover", command.service, command.data);
+        if (this.operation !== token) return;
+        if (command.arrival && !stepArrived(this.hass.states[command.data.entity_id], command)) {
+          const arrived = await new Promise<boolean>(resolve => { this.waiting = {step:command, resolve}; });
+          if (!arrived || this.operation !== token) return;
+        }
       }
       if (this.operation !== token) return;
       this.acknowledged = true;
@@ -405,9 +492,9 @@ export class KioskBlindPresetsCard extends LitElement {
       >
         ${this.config.presets.map((p) => {
           const problem =
-            presetProblem(p) ||
-            (((p.commands ?? p.actions) ? (p.commands ?? p.actions)!.every(c => nativeAvailable(this.hass.states[c.entity_id],c)) : this.config.blinds.every((b) =>
-              available(this.hass.states[b.entity]),
+            presetProblem(p, this.config.blinds) ||
+            (((p.commands ?? p.actions) ? (p.commands ?? p.actions)!.every(c => this.commandAvailable(c)) : this.config.blinds.every((b) =>
+              b.mapping === 'independent-tdbu' ? !!this.hass.states[b.entity] && this.hass.states[b.entity].state !== 'unavailable' : available(this.hass.states[b.entity]),
             ))
               ? ""
               : "Blind unavailable");

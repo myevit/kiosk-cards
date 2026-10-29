@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0
+
+- Add independent two-rail mapping and per-blind editor selection; support absolute middle-band targets without scenes or explicit command overrides.
+- Match native measured rail fields rather than cached single-lift projections, with feedback-gated safe ordering and cold-start initialization.
+- Keep partial-state arrival usable while global state is unknown; do not confirm moving rails or whole-window targets from incomplete measurements.
+- Allow 120 seconds per service/destination for actual shade travel, retaining bounded silent failures and existing sequential compatibility.
+
 ## 0.7.0
 
 - Picture presets can store explicit native cover commands, independently of picture coordinates, with reported native-state matching and whole-plan preflight.

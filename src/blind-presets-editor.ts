@@ -23,6 +23,10 @@ const blindSchema = [
   },
   text("name"),
   number("width", 0.1, 10, 0.1),
+  {name:'mapping',selector:{select:{mode:'dropdown',options:[
+    {value:'sequential-tdbu',label:'Sequential TDBU (default)'},
+    {value:'independent-tdbu',label:'Independent top and bottom rails'},
+  ]}}},
 ];
 export class KioskBlindPresetsEditor extends LitElement {
   static properties = {
@@ -144,7 +148,7 @@ export class KioskBlindPresetsEditor extends LitElement {
     } catch (e) {
       return (e as Error).message;
     }
-    return presetProblem(this.draft);
+    return presetProblem(this.draft, this.config.blinds);
   }
   private save() {
     if (!this.draft || this.draftProblem) return;
@@ -213,6 +217,7 @@ export class KioskBlindPresetsEditor extends LitElement {
       entity: "Cover entity",
       name: "Accessible name",
       width: "Relative picture width",
+      mapping: "Rail mapping",
       top: "Top (% down)",
       bottom: "Bottom (% down)",
     })[s.name] || s.name;
@@ -338,7 +343,7 @@ export class KioskBlindPresetsEditor extends LitElement {
         <button ?disabled=${!this.sourceScript || this.copying || !this.hass?.callWS} @click=${() => this.copyCommands()}>Copy commands</button>
         <p>Copies only simple cover actions into this draft. Review commands and picture, then Save. No script is run or linked.</p>
         <h3>Native override (optional)</h3>
-        <p>With an override, only listed shades are commanded; all others are untouched. Removing the override restores sequential mode.</p>
+        <p>With an override, only listed shades are commanded; all others are untouched. Removing the override restores each blind's configured rail mapping.</p>
         ${this.config.blinds.map(b => {
           const c = (this.draft!.commands ?? this.draft!.actions)?.find(c => c.entity_id === b.entity);
           const numeric = c?.service === 'set_cover_position' || c?.service === 'set_cover_tilt_position';
@@ -394,7 +399,7 @@ export class KioskBlindPresetsEditor extends LitElement {
             <ha-form
               data-blind=${i}
               .hass=${this.hass}
-              .data=${b}
+              .data=${{...b,mapping:b.mapping ?? 'sequential-tdbu'}}
               .schema=${blindSchema}
               .computeLabel=${this.label}
               @value-changed=${(e: CustomEvent) => this.updateBlind(i, e)}
@@ -444,7 +449,7 @@ export class KioskBlindPresetsEditor extends LitElement {
       </div>
       <h3>Presets</h3>
       <div class="pictures">
-        ${this.config.presets.map((p, i) => html`<button class="tile" aria-label=${`Edit ${p.name}`} title=${presetProblem(p)} @click=${() => this.edit(i)}>${blindPicture(this.config.blinds, p.positions)}</button>`)}
+        ${this.config.presets.map((p, i) => html`<button class="tile" aria-label=${`Edit ${p.name}`} title=${presetProblem(p,this.config.blinds)} @click=${() => this.edit(i)}>${blindPicture(this.config.blinds, p.positions)}</button>`)}
       </div>
       ${this.config.presets.map((p, i) => html`<div class="actions"><span>${p.name}</span><button aria-label=${`Move preset ${p.name} up`} ?disabled=${i === 0} @click=${() => this.movePreset(i, -1)}>↑</button><button aria-label=${`Move preset ${p.name} down`} ?disabled=${i === this.config.presets.length - 1} @click=${() => this.movePreset(i, 1)}>↓</button></div>`)}<button
         ?disabled=${!this.config.blinds.length || this.config.presets.length >= this.config.rows * this.config.columns}

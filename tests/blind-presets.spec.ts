@@ -345,7 +345,7 @@ test("global duplicate suppression, partial failure stops later dispatch, timeou
   await expectSilent(page, false, /Action failed/);
   expect(await page.evaluate(() => (window as any).calls.length)).toBe(1);
   await page.getByRole("button", { name: "Open", exact: true }).click();
-  await page.clock.fastForward(12001);
+  await page.clock.fastForward(120001);
   await expectSilent(page, false, /No confirmation/);
   await page.evaluate(() => (window as any).resolve());
   expect(await page.evaluate(() => (window as any).calls.length)).toBe(2);
@@ -766,7 +766,7 @@ test("old service rejection cannot release or overwrite a newer operation after 
     };
   });
   await page.getByRole("button", { name: "Open", exact: true }).click();
-  await page.clock.fastForward(12001);
+  await page.clock.fastForward(120001);
   await page.getByRole("button", { name: "Bottom", exact: true }).click();
   await page.evaluate(() => (window as any).waiters[0].reject(Error("late")));
   await expectSilent(page, true);
