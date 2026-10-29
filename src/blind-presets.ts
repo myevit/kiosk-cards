@@ -317,10 +317,14 @@ export class KioskBlindPresetsCard extends LitElement {
     if (!this.config) return 1;
     // HA can ask for masonry size before ResizeObserver's first callback.
     const width = this.getBoundingClientRect().width || this.cardWidth;
-    const columns = Math.min(this.config.columns, Math.max(1, Math.floor((width - 20) / 56)));
+    const columns = this.columnsForWidth(width);
     const rows = Math.ceil(this.config.rows * this.config.columns / columns);
-    const tileHeight = Math.max(44, (width - 32 - (columns - 1) * 12) / columns / 1.2133333);
-    return Math.ceil((32 + rows * tileHeight + (rows - 1) * 12) / 50);
+    const tileHeight = Math.max(44, (width - (columns - 1) * 12) / columns / 1.2133333);
+    return Math.ceil((rows * tileHeight + (rows - 1) * 12) / 50);
+  }
+  private columnsForWidth(width: number) {
+    // Only inter-button gaps consume space: n * 44 + (n - 1) * 12 <= width.
+    return Math.min(this.config.columns, Math.max(1, Math.floor((width + 12) / 56)));
   }
   getGridOptions() {
     return { columns: 12, rows: "auto", min_columns: 3 };
@@ -332,26 +336,23 @@ export class KioskBlindPresetsCard extends LitElement {
         min-width: 0;
         position: relative;
       }
-      [part="feedback"] {
-        position: static;
-        display: block;
-        padding: 0 16px 8px;
-        color: var(--error-color, #db4437);
-      }
+
       .matrix {
         display: grid;
         gap: 12px;
-        padding: 16px;
+        padding: 0;
         box-sizing: border-box;
         background: transparent;
       }
       .slot {
         aspect-ratio: 1.2133333;
+        min-height: 44px;
       }
       button.tile {
         display: flex;
         align-items: center;
         justify-content: center;
+        width: 100%;
         min-width: 44px;
         min-height: 44px;
         aspect-ratio: 1.2133333;
@@ -381,7 +382,7 @@ export class KioskBlindPresetsCard extends LitElement {
     if (!this.config || !this.hass) return nothing;
     return html`<div
         class="matrix"
-        style=${`grid-template-columns:repeat(${Math.min(this.config.columns, Math.max(1, Math.floor((this.cardWidth - 20) / 56)))},minmax(44px,1fr))`}
+        style=${`grid-template-columns:repeat(${this.columnsForWidth(this.cardWidth)},minmax(44px,1fr))`}
       >
         ${this.config.presets.map((p) => {
           const problem =
@@ -400,7 +401,6 @@ export class KioskBlindPresetsCard extends LitElement {
             type="button"
             class=${`tile ${active ? "active" : ""}`}
             aria-label=${p.name}
-            title=${problem}
             ?disabled=${!!problem || this.busy}
             @click=${(e: MouseEvent) => this.activate(p, e)}
             @keydown=${(e: KeyboardEvent) => {
@@ -411,8 +411,7 @@ export class KioskBlindPresetsCard extends LitElement {
             ${blindPicture(this.config.blinds, p.positions)}
           </button>`;
         })}${Array.from({ length: this.config.rows * this.config.columns - this.config.presets.length }, () => html`<div class="slot" aria-hidden="true"></div>`)}
-      </div>
-      ${this.error ? html`<span part="feedback" role="status">${this.error}</span>` : nothing}`;
+      </div>`;
   }
 }
 if (!customElements.get("kiosk-blind-presets-card"))

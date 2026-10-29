@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1
+
+- Blind preset controls render buttons only: no runtime status text, error captions or tooltips. Editor validation stays available.
+- Removed composite perimeter padding; retained inter-button spacing and shared themed surfaces.
+- Reconciled responsive columns, touch-size thresholds and initial masonry sizing with flush-edge layout.
+- Added regressions for silent failures/timeouts and exact zero-padding geometry at narrow/wide sizes.
+
 ## 0.6.0
 
 - Composite picture-only blind preset card with configurable shade order/proportions and preset grid dimensions.

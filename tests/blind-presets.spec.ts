@@ -79,6 +79,24 @@ async function mount(
     { cfg, attributes },
   );
 }
+async function expectSilent(page: any, busy?: boolean, error?: RegExp) {
+  await expect(page.locator('[role="status"], [role="alert"], [part="feedback"], [title], [role="progressbar"], ha-circular-progress, .spinner')).toHaveCount(0);
+  expect((await page.locator('.matrix').textContent())?.trim()).toBe("");
+  expect(await page.evaluate(() => {
+    const root = (window as any).card.shadowRoot;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.parentElement?.tagName !== 'STYLE' && node.textContent?.trim()) return false;
+    }
+    return true;
+  })).toBe(true);
+  if (busy !== undefined)
+    await expect.poll(() => page.evaluate(() => (window as any).card.busy)).toBe(busy);
+  if (error)
+    expect(await page.evaluate(() => (window as any).card.error)).toMatch(error);
+}
+
 test("picture-only registered composite renders exact absolute geometry including gathered top", async ({
   page,
 }) => {
@@ -169,7 +187,8 @@ test("structural config errors reject safely; unsupported middle bands stay rend
   ).toBeDisabled();
   await expect(
     page.getByRole("button", { name: "Open", exact: true }),
-  ).toHaveAttribute("title", /sequential/i);
+  ).not.toHaveAttribute("title");
+  await expectSilent(page, false);
   await expect(
     page.getByRole("button", { name: "Closed", exact: true }),
   ).toBeEnabled();
@@ -281,7 +300,7 @@ test("validates all capabilities before dispatch, skips matching shades, maps ge
   await mount(page, cfg);
   await report(page, [{}, { supported_features: 0 }, {}]);
   await page.getByRole("button", { name: "Open", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText(/capabilit/i);
+  await expectSilent(page, false, /capabilit/i);
   expect(await page.evaluate(() => (window as any).calls)).toEqual([]);
   await report(page, [{}, { supported_features: 135 }, {}]);
   await page.getByRole("button", { name: "Open", exact: true }).click();
@@ -323,11 +342,11 @@ test("global duplicate suppression, partial failure stops later dispatch, timeou
   });
   expect(await page.evaluate(() => (window as any).calls.length)).toBe(1);
   await page.evaluate(() => (window as any).reject(Error("no")));
-  await expect(page.getByRole("status")).toContainText("Action failed");
+  await expectSilent(page, false, /Action failed/);
   expect(await page.evaluate(() => (window as any).calls.length)).toBe(1);
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await page.clock.fastForward(12001);
-  await expect(page.getByRole("status")).toContainText("No confirmation");
+  await expectSilent(page, false, /No confirmation/);
   await page.evaluate(() => (window as any).resolve());
   expect(await page.evaluate(() => (window as any).calls.length)).toBe(2);
   await page.getByRole("button", { name: "Open", exact: true }).click();
@@ -336,7 +355,7 @@ test("global duplicate suppression, partial failure stops later dispatch, timeou
     w.card.setConfig(w.card.config);
     w.resolve();
   });
-  await expect(page.getByRole("status")).toHaveCount(0);
+  await expectSilent(page, false);
   expect(await page.evaluate(() => (window as any).calls.length)).toBe(3);
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await page.evaluate(() => {
@@ -488,7 +507,7 @@ test("keyboard Enter/Space, key repeat, inner svg, double click and hold produce
 for (const width of [320, 360, 400, 420, 600])
   test(`responsive matrix ${width}px: touch bounds, no titles, theme and geometry`, async ({
     page,
-  }) => {
+  }, testInfo) => {
     const cfg = structuredClone(config);
     cfg.rows = 3;
     cfg.presets = Array.from({ length: 9 }, (_, i) => ({
@@ -506,12 +525,18 @@ for (const width of [320, 360, 400, 420, 600])
       .evaluate((el: any) => ({
         w: el.getBoundingClientRect().width,
         h: el.getBoundingClientRect().height,
+        x: el.getBoundingClientRect().x,
+        y: el.getBoundingClientRect().y,
+        padding: getComputedStyle(el).padding,
+        gap: getComputedStyle(el).gap,
         background: getComputedStyle(el).backgroundColor,
         rects: [...el.querySelectorAll("button")].map((b: any) => ({
           w: b.getBoundingClientRect().width,
           h: b.getBoundingClientRect().height,
           right: b.getBoundingClientRect().right,
           left: b.getBoundingClientRect().left,
+          top: b.getBoundingClientRect().top,
+          bottom: b.getBoundingClientRect().bottom,
           radius: getComputedStyle(b).borderRadius,
           shadow: getComputedStyle(b).boxShadow,
         })),
@@ -525,11 +550,25 @@ for (const width of [320, 360, 400, 420, 600])
     ).toBe(true);
     expect(info.rects.every((r) => r.radius === "14px")).toBe(true);
     expect(info.rects.every((r) => r.shadow !== "none")).toBe(true);
-    if (width === 420) {
-      expect(info.rects[0].w).toBeCloseTo(121.33, 1);
-      expect(info.rects[0].h).toBeCloseTo(100, 1);
-      expect(info.h).toBeCloseTo(356, 0);
-    }
+    const tileWidth = (width - 2 * 12) / 3;
+    const tileHeight = tileWidth / 1.2133333;
+    const height = 3 * tileHeight + 2 * 12;
+    expect(info.padding).toBe("0px");
+    expect(info.gap).toBe("12px");
+    expect(info.rects[0].left - info.x).toBeCloseTo(0, 2);
+    expect(info.rects[0].top - info.y).toBeCloseTo(0, 2);
+    // Grid/aspect-ratio layout rounds to 1/64 CSS px in Chromium.
+    expect(Math.abs(info.rects.at(-1)!.right - info.x - width)).toBeLessThan(.02);
+    expect(Math.abs(info.rects.at(-1)!.bottom - info.y - info.h)).toBeLessThan(.02);
+    expect(info.rects[1].left - info.rects[0].right).toBeCloseTo(12, 2);
+    expect(Math.abs(info.rects[3].top - info.rects[0].bottom - 12)).toBeLessThan(.02);
+    expect(info.rects[0].w).toBeCloseTo(tileWidth, 1);
+    expect(info.rects[0].h).toBeCloseTo(tileHeight, 1);
+    expect(info.h).toBeCloseTo(height, 1);
+    expect(await page.evaluate(() => (window as any).card.getCardSize())).toBe(Math.ceil(height / 50));
+    await expectSilent(page, false);
+    await page.locator("kiosk-blind-presets-card").screenshot({ path: testInfo.outputPath(`blind-buttons-${width}.png`) });
+    console.log(JSON.stringify({ width, tileWidth, tileHeight, height, actual: info.rects[0], cardSize: Math.ceil(height / 50) }));
     const fabric = await page
       .locator("button")
       .nth(2)
@@ -633,7 +672,7 @@ test("partial failure after first success never dispatches third; pending has no
     };
   });
   await page.getByRole("button", { name: "Open", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Action failed");
+  await expectSilent(page, false, /Action failed/);
   expect(await page.evaluate(() => (window as any).calls.length)).toBe(2);
   await page.evaluate(() => {
     const w = window as any;
@@ -643,7 +682,7 @@ test("partial failure after first success never dispatches third; pending has no
     };
   });
   await page.getByRole("button", { name: "Open", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveCount(0);
+  await expectSilent(page, true);
   await expect(page.locator(".tile:disabled")).toHaveCount(3);
 });
 test("stale pre-render click after reconfiguration cannot target new blinds", async ({
@@ -664,6 +703,53 @@ test("stale pre-render click after reconfiguration cannot target new blinds", as
   });
   expect(await page.evaluate(() => (window as any).calls)).toEqual([]);
 });
+for (const width of [320, 360, 400, 420, 600, 44, 99, 100, 155, 156])
+  test(`initial sizing without observer at ${width}px uses zero perimeter`, async ({ page }) => {
+    const cfg = structuredClone(config);
+    cfg.rows = 3;
+    cfg.presets = Array.from({ length: 9 }, (_, i) => ({ ...structuredClone(config.presets[i % 3]), id: `initial-${i}`, name: `Initial ${i}` }));
+    await mount(page, cfg);
+    const sizing = await page.evaluate((width) => {
+      const card = (window as any).card;
+      card.style.width = `${width}px`;
+      return { size: card.getCardSize(), grid: card.getGridOptions() };
+    }, width);
+    const columns = Math.min(3, Math.max(1, Math.floor((width + 12) / 56)));
+    const rows = Math.ceil(9 / columns);
+    const tileHeight = Math.max(44, (width - (columns - 1) * 12) / columns / 1.2133333);
+    expect(sizing.size).toBe(Math.ceil((rows * tileHeight + (rows - 1) * 12) / 50));
+    expect(sizing.grid.rows).toBe("auto");
+    await expect.poll(() => page.locator(".matrix").evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length)).toBe(columns);
+    const bounds = await page.locator(".matrix").evaluate(el => {
+      const matrix = el.getBoundingClientRect();
+      return [...el.querySelectorAll("button")].map(button => {
+        const tile = button.getBoundingClientRect();
+        return { width: tile.width, height: tile.height, left: tile.left - matrix.left, right: tile.right - matrix.left };
+      });
+    });
+    expect(bounds.every(b => b.width >= 44 && b.height >= 44 && b.left >= 0 && b.right <= width + .02)).toBe(true);
+    await expectSilent(page, false);
+  });
+
+test("unavailable and successful states never render runtime feedback", async ({ page }) => {
+  await mount(page);
+  await page.evaluate(() => {
+    const w = window as any;
+    w.card.hass = { ...w.card.hass, states: { ...w.card.hass.states, "cover.example_middle": { state: "unavailable", attributes: {} } } };
+  });
+  await expect(page.locator(".tile:disabled")).toHaveCount(3);
+  await expectSilent(page, false);
+  await page.evaluate(() => (window as any).card.activate((window as any).card.config.presets[0], new MouseEvent("click")));
+  expect(await page.evaluate(() => (window as any).calls)).toEqual([]);
+  await expectSilent(page, false);
+  await report(page, [{ current_position: 25, current_top_position: 0 }, { current_position: 25, current_top_position: 0 }, { current_position: 25, current_top_position: 0 }]);
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await expectSilent(page, true);
+  await report(page, [{ current_position: 100, current_top_position: 0 }, { current_position: 100, current_top_position: 0 }, { current_position: 100, current_top_position: 0 }]);
+  await expectSilent(page, false);
+  expect(await page.evaluate(() => (window as any).calls)).toHaveLength(3);
+});
+
 test("old service rejection cannot release or overwrite a newer operation after timeout", async ({
   page,
 }) => {
@@ -683,7 +769,7 @@ test("old service rejection cannot release or overwrite a newer operation after 
   await page.clock.fastForward(12001);
   await page.getByRole("button", { name: "Bottom", exact: true }).click();
   await page.evaluate(() => (window as any).waiters[0].reject(Error("late")));
-  await expect(page.getByRole("status")).toHaveCount(0);
+  await expectSilent(page, true);
   await expect(page.locator(".tile:disabled")).toHaveCount(3);
   expect(await page.evaluate(() => (window as any).calls.length)).toBe(2);
 });
