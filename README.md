@@ -28,7 +28,7 @@ ON uses a white tile, black title, gray detail and a colored circle with white g
 
 ## Picture-only blind presets
 
-`custom:kiosk-blind-presets-card` adds one composite, responsive picture-button matrix with a native visual editor. It stores ordered blinds and presets in normal card config and directly controls only the verified sequential-TDBU mapping. Unsupported middle-band pictures remain stored but disabled. It does not create helpers, scripts, scenes, or backend integrations.
+`custom:kiosk-blind-presets-card` adds one composite, responsive picture-button matrix with a native visual editor. It stores ordered blinds and presets in normal card config. Each blind independently chooses backward-compatible `sequential-tdbu` (default) or `independent-tdbu`. Independent rails support actual middle bands such as absolute top 30 / bottom 70, with safe ordering and measured arrival waits; they require source-unique `rail_top` / `rail_bottom` feedback from a compatible driver. It does not create helpers, scripts, scenes, or backend integrations.
 
 See [configuration, mapping, editor, and safety details](docs/blind-presets.md).
 
