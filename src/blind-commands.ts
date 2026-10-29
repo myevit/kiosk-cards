@@ -50,6 +50,10 @@ export function nativeMatches(s: State | undefined, c: BlindCommand) {
   if (!nativeAvailable(s,c) || !['open','closed'].includes(s!.state)) return false;
   // A top-open sequential shade also reports bottom position 0; that is not fully closed.
   if (c.service === 'close_cover' && s!.state !== 'closed') return false;
+  // Sequential endpoint values overlap another travel segment. Require both native reports
+  // before suppressing a command or declaring its gathered-bottom endpoint matched.
+  if (c.service === 'set_cover_position' && c.position === 0 && !(typeof s!.attributes.current_tilt_position === 'number' && Math.abs(s!.attributes.current_tilt_position - 100) <= 2)) return false;
+  if (c.service === 'set_cover_tilt_position' && c.tilt_position === 100 && !(typeof s!.attributes.current_position === 'number' && Math.abs(s!.attributes.current_position) <= 2)) return false;
   const expected = c.service === 'open_cover' ? 100 : c.service === 'close_cover' ? 0 : c.service === 'set_cover_position' ? c.position : c.tilt_position;
   return Math.abs(s!.attributes[c.service === 'set_cover_tilt_position' ? 'current_tilt_position' : 'current_position'] - expected) <= 2;
 }

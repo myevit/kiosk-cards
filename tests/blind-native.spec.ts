@@ -22,6 +22,17 @@ test('native close is not already matched by a top-open cover with zero bottom o
  await page.evaluate(()=>{const w=window as any;w.el.hass=w.hass={...w.hass,states:{...w.hass.states,'cover.example_left':{state:'closed',attributes:{current_position:0,current_tilt_position:0,supported_features:255}}}}});
  await expect(b).toHaveAttribute('aria-pressed','true');expect(await page.evaluate(()=>(window as any).el.busy)).toBe(false);
 });
+for(const [service,data,initial] of [
+ ['set_cover_position',{position:0},{current_position:0,current_tilt_position:30}],
+ ['set_cover_tilt_position',{tilt_position:100},{current_position:30,current_tilt_position:100}],
+] as const)test(`native ${service} gathered-bottom endpoint is not matched by another segment`,async({page})=>{
+ await setup(page,cfg([{service,entity_id:entities[0],...data}]));
+ await page.evaluate(initial=>{const w=window as any;w.el.hass=w.hass={...w.hass,states:{...w.hass.states,'cover.example_left':{state:'open',attributes:{...initial,supported_features:255}}}}},initial);
+ const b=page.getByRole('button',{name:'Band',exact:true});await expect(b).toHaveAttribute('aria-pressed','false');await b.click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).calls)).toEqual([['cover',service,{entity_id:entities[0],...data}]]);
+ await page.evaluate(()=>{const w=window as any;w.el.hass=w.hass={...w.hass,states:{...w.hass.states,'cover.example_left':{state:'open',attributes:{current_position:0,current_tilt_position:100,supported_features:255}}}}});
+ await expect(b).toHaveAttribute('aria-pressed','true');expect(await page.evaluate(()=>(window as any).el.busy)).toBe(false);
+});
 for(const [service,data,attribute,expected] of [
  ['open_cover',{},'current_position',100],['close_cover',{},'current_position',0],['set_cover_position',{position:40},'current_position',40],['set_cover_tilt_position',{tilt_position:70},'current_tilt_position',70],
 ] as const) test(`explicit actions alias dispatches and confirms ${service} independently of picture`,async({page})=>{
