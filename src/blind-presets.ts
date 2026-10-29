@@ -293,7 +293,7 @@ export class KioskBlindPresetsCard extends LitElement {
     // Catch separately: a stale failure cannot reject a newer goal waiting for the lane.
     const settled = publish.catch(() => undefined);
     this.transports.set(id, settled);
-    settled.then(() => { if (this.transports.get(id) === settled) this.transports.delete(id); });
+    settled.then(() => { if (this.transports.get(id) === settled) { this.transports.delete(id); this.requestUpdate(); } });
     await publish;
     return live();
   }
@@ -418,8 +418,9 @@ export class KioskBlindPresetsCard extends LitElement {
   }
   private hasPending(p: BlindPreset) {
     const commands = includedCommands(p,this.config.blinds);
-    return commands ? commands.some(c => this.pendingRails.has(c.entity_id))
-      : this.config.blinds.some((b,i) => !p.positions[i].ignored && this.pendingRails.has(b.entity));
+    const pending = (entity: string) => this.pendingRails.has(entity) || this.transports.has(entity);
+    return commands ? commands.some(c => pending(c.entity_id))
+      : this.config.blinds.some((b,i) => !p.positions[i].ignored && pending(b.entity));
   }
   private presetMatches(p: BlindPreset) {
     if (presetProblem(p,this.config.blinds) || this.hasPending(p)) return false;

@@ -176,6 +176,19 @@ test('config save cannot bypass a retained physical axis barrier by switching to
  c.presets[0].commands=[{service:'set_cover_position',entity_id:entity,position:30}];await page.evaluate(c=>{(window as any).el.setConfig(c)},c);
  await page.getByRole('button').click();expect(await calls(page)).toEqual([axis('set_cover_tilt_position',80)]);
 });
+for(const settle of ['resolve','reject'])test(`config mode switch retains publish fence after physical arrival until old ${settle}`,async({page})=>{
+ const c=config(80,100);await setup(page,c,{rail_top:30,rail_bottom:100});
+ await page.evaluate(()=>{const w=window as any;w.hass.callService=(...a:any[])=>{w.calls.push(a);return w.calls.length===1?new Promise((resolve,reject)=>w.publishGate={resolve,reject}):Promise.resolve()}});
+ await page.getByRole('button').click();await report(page,80,100,{motion_top:'STOP',motion_bottom:'STOP'});
+ await expect.poll(()=>page.evaluate(()=>(window as any).el.pendingRails.size)).toBe(0);
+ expect(await page.evaluate(()=>(window as any).el.transports.size)).toBe(1);
+ c.presets[0].commands=[{service:'set_cover_tilt_position',entity_id:entity,tilt_position:30}];
+ await page.evaluate(c=>{const w=window as any;w.el.setConfig(c);w.el.activate(w.el.config.presets[0],new MouseEvent('click'))},c);
+ expect(await calls(page)).toEqual([axis('set_cover_tilt_position',80)]);await expect(page.getByRole('button')).toHaveAttribute('aria-pressed','false');
+ await page.evaluate(settle=>{(window as any).publishGate[settle](settle==='reject'?Error('late failure'):undefined)},settle);
+ await expect(page.getByRole('button')).toBeEnabled();await page.getByRole('button').click();
+ await expect.poll(()=>calls(page)).toEqual([axis('set_cover_tilt_position',80),axis('set_cover_tilt_position',30)]);
+});
 const axis=(service:string,value:number)=>['cover',service,{entity_id:entity,[service==='set_cover_position'?'position':'tilt_position']:value}];
 test('cold partial measurement advances while global cover state remains unknown, but moving axis waits',async({page})=>{
  await setup(page,config(),{current_position:30,current_tilt_position:30,rails_known:false},'unknown');
