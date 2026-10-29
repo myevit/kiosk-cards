@@ -1,6 +1,6 @@
 # Kiosk Cards
 
-Reusable Home Assistant dashboard cards with a consistent touch-first design. One frontend module, seven cards, no backend integration, button-card templates or card-mod required.
+Reusable Home Assistant dashboard cards with a consistent touch-first design. One frontend module, a shared family of cards, no backend integration, button-card templates or card-mod required.
 
 ![Synthetic preview: entity off/on, action and room cards](docs/preview.png)
 
@@ -25,6 +25,12 @@ entity: light.example
 The icon toggles only `light`, `switch` and `input_boolean`. The body opens Home Assistant's normal more-info dialog, retaining brightness and device-specific controls. Locks, covers, alarm panels, scripts, scenes and buttons never receive an implicit toggle or service call. Hold opens more-info by default. Double tap defaults to no action.
 
 ON uses a white tile, black title, gray detail and a colored circle with white glyph. OFF uses a translucent dark tile, theme title color, muted detail and a darker circle with white glyph. State always comes from `hass.states`, not from optimistic animation. Unknown/unavailable entities cannot send commands.
+
+## Picture-only blind presets
+
+`custom:kiosk-blind-presets-card` adds one composite, responsive picture-button matrix with a native visual editor. It stores ordered blinds and presets in normal card config and directly controls only the verified sequential-TDBU mapping. Unsupported middle-band pictures remain stored but disabled. It does not create helpers, scripts, scenes, or backend integrations.
+
+See [configuration, mapping, editor, and safety details](docs/blind-presets.md).
 
 ## Explicit action
 
