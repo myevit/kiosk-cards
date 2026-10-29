@@ -91,7 +91,7 @@ test('explicit ACK never means arrival, moving reports do not confirm; timeout a
  await setup(page,cfg([command()])); await page.clock.install();
  await page.evaluate(()=>{const w=window as any;w.waiters=[];w.hass.callService=(...a:any[])=>{w.calls.push(a);return new Promise((resolve,reject)=>w.waiters.push({resolve,reject}))}});
  const b=page.getByRole('button',{name:'Band',exact:true}); await b.click();
- await page.evaluate(()=>{const w=window as any;w.waiters[0].resolve()}); await expect(b).toHaveAttribute('aria-pressed','false'); expect(await page.evaluate(()=>(window as any).el.busy)).toBe(true);
+ await page.evaluate(()=>{const w=window as any;w.waiters[0].resolve()}); await expect(b).toHaveAttribute('aria-pressed','false'); expect(await page.evaluate(()=>(window as any).el.busy)).toBe(false);
  await page.evaluate(()=>{const w=window as any;w.el.hass=w.hass={...w.hass,states:{...w.hass.states,'cover.example_right':{state:'opening',attributes:{current_position:0,current_tilt_position:30,supported_features:128}}}}});
  await expect(b).toHaveAttribute('aria-pressed','false'); await page.clock.fastForward(120001); expect(await page.evaluate(()=>(window as any).el.busy)).toBe(false);
  await page.evaluate(()=>{const w=window as any;w.el.hass=w.hass={...w.hass,states:{...w.hass.states,'cover.example_right':{state:'open',attributes:{current_position:0,current_tilt_position:0,supported_features:128}}}}}); await b.click(); await page.clock.fastForward(120001); await b.click();

@@ -145,9 +145,11 @@ function independentAxis(s: State | undefined, top: boolean): number | undefined
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100 ? value : undefined;
 }
 function independentMatches(s: State | undefined, c: BlindCommand) {
-  // A partial measured rail can arrive while the global cover is still unknown.
-  if (!s || !['open', 'closed', 'unknown'].includes(s.state)) return false;
-  const moving = (top: boolean) => ['OPEN','CLOSE'].includes(s.attributes[top ? 'motion_top' : 'motion_bottom']);
+  if (!s || !['open', 'closed'].includes(s.state)) return false;
+  const moving = (top: boolean) => {
+    const motion = s.attributes[top ? 'motion_top' : 'motion_bottom'];
+    return motion !== undefined && motion !== 'STOP';
+  };
   if (c.service === 'open_cover' || c.service === 'close_cover') {
     const t = independentAxis(s,true), b = independentAxis(s,false);
     return s.attributes.rails_known !== false && t !== undefined && b !== undefined && !moving(true) && !moving(false) && Math.abs(t) <= 2 && Math.abs(b-(c.service === 'open_cover' ? 0 : 100)) <= 2 && (c.service !== 'close_cover' || s.state === 'closed');
@@ -158,42 +160,16 @@ function independentMatches(s: State | undefined, c: BlindCommand) {
   const expected = top ? c.tilt_position : c.position;
   return Math.abs((top ? measured : 100-measured) - expected!) <= 2;
 }
-function safeToMove(s: State | undefined, c: BlindCommand) {
-  if (c.service === 'set_cover_tilt_position') {
-    const bottom = independentAxis(s,false);
-    return c.tilt_position === 0 || (bottom !== undefined && !['OPEN','CLOSE'].includes(s?.attributes.motion_bottom) && bottom >= c.tilt_position);
-  }
-  if (c.service === 'set_cover_position') {
-    const top = independentAxis(s,true);
-    return c.position === 0 || (top !== undefined && !['OPEN','CLOSE'].includes(s?.attributes.motion_top) && top <= 100-c.position);
-  }
-  return true;
-}
-type PlanStep = {service: string; data: Record<string, any>; arrival?: BlindCommand; safeFor?: BlindCommand};
-function stepArrived(s: State | undefined, step: PlanStep) {
-  return !!step.arrival && independentMatches(s,step.arrival) && (!step.safeFor || safeToMove(s,step.safeFor));
-}
+type PlanStep = {service: string; data: Record<string, any>};
 function independentPlan(b: Blind, s: State | undefined, p: BlindPosition): PlanStep[] {
   if (!s || !['open','closed','opening','closing','unknown'].includes(s.state)) throw Error('Independent blind unavailable');
-  const top: BlindCommand = {service:'set_cover_tilt_position', entity_id:b.entity, tilt_position:p.top};
-  const bottom: BlindCommand = {service:'set_cover_position', entity_id:b.entity, position:100-p.bottom};
-  const currentTop = independentAxis(s,true), currentBottom = independentAxis(s,false);
-  const known = s.attributes.rails_known !== false && currentTop !== undefined && currentBottom !== undefined;
-  let commands: BlindCommand[];
-  if (!known) {
-    // Always establish a safe lower boundary before moving an unknown top.
-    // Do not filter this sequence against cached pre-initialization targets.
-    commands = [{service:'set_cover_position',entity_id:b.entity,position:0},top,...(p.bottom === 100 ? [] : [bottom])];
-  } else {
-    const ordered = p.top > currentBottom ? [bottom,top] : [top,bottom];
-    commands = ordered.filter((c,i) => !independentMatches(s,c) || (i === 0 && !safeToMove(s,ordered[1])));
-  }
   const features = s.attributes.supported_features;
-  if (typeof features !== 'number' || !Number.isInteger(features) || commands.some(c => !(features & (c.service === 'set_cover_tilt_position' ? 128 : 4)))) throw Error('Required independent capability unavailable');
-  return commands.map((c,i) => {
-    const {service, ...data} = c;
-    return {service,data,arrival:c,safeFor:commands[i+1]};
-  });
+  if (typeof features !== 'number' || !Number.isInteger(features) || (features & 132) !== 132) throw Error('Required independent capability unavailable');
+  // Always replace both motor targets, including when measured coordinates match.
+  return [
+    {service:'set_cover_tilt_position', data:{entity_id:b.entity, tilt_position:p.top}},
+    {service:'set_cover_position', data:{entity_id:b.entity, position:100-p.bottom}},
+  ];
 }
 function matches(s: State | undefined, p: BlindPosition, b?: Blind) {
   if (b?.mapping === 'independent-tdbu') return s?.attributes.rails_known !== false && independentMatches(s, {service:'set_cover_tilt_position',entity_id:b.entity,tilt_position:p.top}) && independentMatches(s, {service:'set_cover_position',entity_id:b.entity,position:100-p.bottom});
@@ -263,16 +239,7 @@ export class KioskBlindPresetsCard extends LitElement {
   busy = false;
   error = "";
   private operation = 0;
-  private watchdog?: ReturnType<typeof setTimeout>;
-  private expected?: BlindPreset;
-  private acknowledged = false;
-  private waiting?: {step: PlanStep; resolve: (arrived: boolean) => void};
-  private railWaiters = new Set<{check: () => boolean; resolve: (ok: boolean) => void}>();
-  private railCancels = new Set<() => void>();
-  private independentRuntime() {
-    return this.config.blinds.every(b => b.mapping === 'independent-tdbu') &&
-      this.config.presets.every(p => p.commands === undefined && p.actions === undefined);
-  }
+  private publishCancels = new Set<() => void>();
   // Only uncancellable publishes live here; superseded goals never append to a FIFO.
   private transports = new Map<string, Promise<unknown>>();
   private async publishRail(step: PlanStep, live: () => boolean, cancelled: Promise<false>) {
@@ -284,10 +251,7 @@ export class KioskBlindPresetsCard extends LitElement {
     if (!live()) return false;
     const publish = Promise.resolve().then(() => {
       if (!live()) return;
-      // Check at the actual dispatch boundary as well as before lane admission.
-      if (!this.commandAvailable(step.arrival!) || !safeToMove(this.hass.states[id],step.arrival!)) throw Error('Unsafe or unavailable');
-      const top = step.arrival!.service === 'set_cover_tilt_position';
-      this.pendingRails.set(id, {step, initial:independentAxis(this.hass.states[id],top), observed:false});
+      if (!this.commandAvailable({service:step.service,...step.data} as BlindCommand)) throw Error('Unavailable');
       return this.hass.callService('cover',step.service,step.data);
     });
     // Catch separately: a stale failure cannot reject a newer goal waiting for the lane.
@@ -297,77 +261,41 @@ export class KioskBlindPresetsCard extends LitElement {
     await publish;
     return live();
   }
-  // A transmitted axis remains a physical barrier across goal cancellation,
-  // timeout, config save and removal. Only actual rail feedback releases it.
-  private pendingRails = new Map<string, {step: PlanStep; initial: number | undefined; observed: boolean}>();
-  private waitRail(check: () => boolean, live: () => boolean, cancelled: Promise<false>): Promise<boolean> {
-    if (!live()) return Promise.resolve(false);
-    if (check()) return Promise.resolve(true);
-    return new Promise(resolve => {
-      const waiter = {check: () => live() && check(), resolve};
-      this.railWaiters.add(waiter);
-      cancelled.then(() => { this.railWaiters.delete(waiter); resolve(false); });
-    });
-  }
-  private async runRails(p: BlindPreset, token: number) {
-    await Promise.allSettled(this.config.blinds.map(async (blind, index) => {
-      if (p.positions[index].ignored) return;
-      const stage = async (job: (live: () => boolean, cancelled: Promise<false>) => Promise<boolean>) => {
-        let active = true;
-        let cancel!: () => void;
-        const live = () => active && this.operation === token && this.isConnected;
-        const cancelled = new Promise<false>(resolve => { cancel = () => { active = false; resolve(false); }; });
-        this.railCancels.add(cancel);
-        const timer = setTimeout(cancel, 120000);
-        try { return await Promise.race([cancelled, job(live, cancelled)]); }
-        finally {
-          clearTimeout(timer);
-          this.railCancels.delete(cancel);
-          cancel();
-        }
-      };
+  private async runPlan(p: BlindPreset, plan: PlanStep[], token: number) {
+    // Legacy recipes retain their order; independent shades publish in parallel.
+    const parallel = !(p.commands || p.actions) && this.config.blinds.some(b => b.mapping === 'independent-tdbu');
+    const groups = parallel ? [...new Set(plan.map(step => step.data.entity_id))].map(id => plan.filter(step => step.data.entity_id === id)) : [plan];
+    await Promise.allSettled(groups.map(async steps => {
       try {
-        // Accept the new intent now, but never mistake a publish ACK or stale
-        // cached coordinates for completion of the already-transmitted axis.
-        if (!await stage(async (live, cancelled) => {
-          if (!await this.waitRail(() => !this.pendingRails.has(blind.entity),live,cancelled)) return false;
-          const transport = this.transports.get(blind.entity);
-          if (transport) await Promise.race([transport,cancelled]);
-          return live();
-        })) return;
-        if (this.operation !== token) return;
-        // Re-plan from measured coordinates after handoff, not the press-time
-        // snapshot. The entire preset was already preflighted before cancellation.
-        const steps = independentPlan(blind,this.hass.states[blind.entity],p.positions[index]);
         for (const step of steps) {
-          if (!await stage(async (live, cancelled) => {
-            if (!live() || !this.commandAvailable(step.arrival!)) return false;
-            if (!await this.waitRail(() => safeToMove(this.hass.states[blind.entity],step.arrival!),live,cancelled)) return false;
-            if (!await this.publishRail(step,live,cancelled)) return false;
-            return this.waitRail(() => !this.pendingRails.has(blind.entity) && stepArrived(this.hass.states[blind.entity],step),live,cancelled);
-          })) return;
+          let active = true;
+          let cancel!: () => void;
+          const live = () => active && this.operation === token && this.isConnected;
+          const cancelled = new Promise<false>(resolve => { cancel = () => { active = false; resolve(false); }; });
+          this.publishCancels.add(cancel);
+          const timer = setTimeout(() => {
+            if (live()) this.error = 'Publish timed out. Check device.';
+            cancel();
+          },120000);
+          try {
+            if (!await Promise.race([cancelled,this.publishRail(step,live,cancelled)])) return;
+          } finally {
+            clearTimeout(timer);
+            this.publishCancels.delete(cancel);
+            cancel();
+          }
         }
       } catch {
         if (this.operation === token) this.error = 'Action failed. Check device.';
       }
     }));
-    if (this.operation === token) {
-      this.busy = false;
-      this.expected = undefined;
-    }
+    if (this.operation === token) this.busy = false;
   }
   private invalidate() {
-    for (const cancel of this.railCancels) cancel();
-    this.railCancels.clear();
-    for (const waiter of this.railWaiters) waiter.resolve(false);
-    this.railWaiters.clear();
-    this.waiting?.resolve(false);
-    this.waiting = undefined;
+    for (const cancel of this.publishCancels) cancel();
+    this.publishCancels.clear();
     this.operation++;
-    clearTimeout(this.watchdog);
     this.busy = false;
-    this.expected = undefined;
-    this.acknowledged = false;
   }
   disconnectedCallback() {
     this.resize?.disconnect();
@@ -384,46 +312,8 @@ export class KioskBlindPresetsCard extends LitElement {
       )
     );
   }
-  protected willUpdate() {
-    this.finishIfConfirmed();
-  }
-  private finishIfConfirmed() {
-    for (const [id, pending] of this.pendingRails) {
-      const state = this.hass.states[id];
-      const top = pending.step.arrival!.service === 'set_cover_tilt_position';
-      // HA republishes setters and target echoes too. An unchanged raw remnant
-      // is not a new actual report; require rail change or observed motion.
-      const actual = independentAxis(state,top);
-      pending.observed ||= (actual !== undefined && actual !== pending.initial) || ['OPEN','CLOSE'].includes(state?.attributes[top ? 'motion_top' : 'motion_bottom']);
-      if (pending.observed && independentMatches(state,pending.step.arrival!)) this.pendingRails.delete(id);
-    }
-    for (const waiter of this.railWaiters) {
-      if (waiter.check()) {
-        this.railWaiters.delete(waiter);
-        waiter.resolve(true);
-      }
-    }
-    if (this.waiting && stepArrived(this.hass.states[this.waiting.step.data.entity_id], this.waiting.step)) {
-      const waiting = this.waiting;
-      this.waiting = undefined;
-      waiting.resolve(true);
-    }
-    if (
-      this.busy &&
-      this.acknowledged &&
-      this.expected &&
-      this.presetMatches(this.expected)
-    )
-      this.invalidate();
-  }
-  private hasPending(p: BlindPreset) {
-    const commands = includedCommands(p,this.config.blinds);
-    const pending = (entity: string) => this.pendingRails.has(entity) || this.transports.has(entity);
-    return commands ? commands.some(c => pending(c.entity_id))
-      : this.config.blinds.some((b,i) => !p.positions[i].ignored && pending(b.entity));
-  }
   private presetMatches(p: BlindPreset) {
-    if (presetProblem(p,this.config.blinds) || this.hasPending(p)) return false;
+    if (presetProblem(p,this.config.blinds)) return false;
     const commands = includedCommands(p,this.config.blinds);
     return commands ? commands.length > 0 && commands.every(c => this.commandMatches(c))
       : this.config.blinds.every((b, i) => p.positions[i].ignored || matches(this.hass.states[b.entity], p.positions[i], b));
@@ -444,7 +334,6 @@ export class KioskBlindPresetsCard extends LitElement {
   private plan(p: BlindPreset): PlanStep[] {
     validateBlindConfig(this.config);
     if (presetProblem(p, this.config.blinds)) throw Error(presetProblem(p, this.config.blinds));
-    if (!this.independentRuntime() && this.hasPending(p)) throw Error('Previous axis is not confirmed');
     const commands = includedCommands(p,this.config.blinds);
     if (commands) {
       // Full schema validation happens before ignored entities are filtered.
@@ -461,12 +350,7 @@ export class KioskBlindPresetsCard extends LitElement {
       const s = this.hass.states[b.entity],
         v = p.positions[i];
       if (b.mapping === 'independent-tdbu') {
-        // A pending axis can invalidate every press-time skip. Validate the
-        // complete envelope before cancelling the old goal or publishing any
-        // entity; compute the measured minimal plan only after handoff.
-        const snapshot = this.pendingRails.has(b.entity) && s
-          ? {...s,attributes:{...s.attributes,rails_known:false}} : s;
-        return independentPlan(b,snapshot,v);
+        return independentPlan(b,s,v);
       }
       if (!available(s)) throw Error("Blind unavailable. Check device.");
       let service: string,
@@ -495,57 +379,15 @@ export class KioskBlindPresetsCard extends LitElement {
   }
   private async activate(p: BlindPreset, e: MouseEvent) {
     e.stopPropagation();
-    if (
-      (this.busy && !this.independentRuntime()) ||
-      e.detail > 1 ||
-      !this.isConnected ||
-      !this.config.presets.includes(p)
-    )
-      return;
-    let plan: ReturnType<KioskBlindPresetsCard["plan"]>;
-    try {
-      plan = this.plan(p);
-    } catch (e) {
-      this.error = (e as Error).message;
-      return;
-    }
-    this.error = "";
-    if (this.independentRuntime()) this.invalidate();
-    if (!plan.length && (!this.independentRuntime() || !this.hasPending(p))) return;
-    const token = ++this.operation;
+    if (e.detail > 1 || !this.isConnected || !this.config.presets.includes(p)) return;
+    let plan: PlanStep[];
+    try { plan = this.plan(p); }
+    catch (e) { this.error = (e as Error).message; return; }
+    this.invalidate();
+    this.error = '';
+    if (!plan.length) return;
     this.busy = true;
-    this.expected = p;
-    this.acknowledged = false;
-    if (this.independentRuntime()) return this.runRails(p, token);
-    try {
-      for (const command of plan) {
-        if (this.operation !== token || !this.isConnected) return;
-        clearTimeout(this.watchdog);
-        this.watchdog = setTimeout(() => {
-          if (this.operation === token) {
-            this.invalidate();
-            this.error = 'No confirmation. Check device.';
-          }
-        }, 120000);
-        if (command.arrival ? !this.commandAvailable(command.arrival) : (p.commands ?? p.actions) ? !this.commandAvailable({service:command.service,...command.data} as BlindCommand) : !available(this.hass.states[command.data.entity_id]))
-          throw Error("Unavailable");
-        if (command.arrival && !safeToMove(this.hass.states[command.data.entity_id],command.arrival)) throw Error('Unsafe rail boundary');
-        await this.hass.callService("cover", command.service, command.data);
-        if (this.operation !== token) return;
-        if (command.arrival && !stepArrived(this.hass.states[command.data.entity_id], command)) {
-          const arrived = await new Promise<boolean>(resolve => { this.waiting = {step:command, resolve}; });
-          if (!arrived || this.operation !== token) return;
-        }
-      }
-      if (this.operation !== token) return;
-      this.acknowledged = true;
-      this.finishIfConfirmed();
-    } catch {
-      if (this.operation === token) {
-        this.invalidate();
-        this.error = "Action failed. Check device.";
-      }
-    }
+    await this.runPlan(p,plan,this.operation);
   }
   declare hass: Hass;
   declare config: BlindPresetsConfig;
@@ -641,7 +483,7 @@ export class KioskBlindPresetsCard extends LitElement {
             type="button"
             class=${`tile ${active ? "active" : ""}`}
             aria-label=${p.name}
-            ?disabled=${!!problem || (this.busy && !this.independentRuntime())}
+            ?disabled=${!!problem}
             @click=${(e: MouseEvent) => this.activate(p, e)}
             @keydown=${(e: KeyboardEvent) => {
               if (e.repeat) e.preventDefault();
