@@ -34,9 +34,14 @@ test('ignored native pair sends zero calls even when absent; all ignored is disa
  const c=cfg();c.blinds.push({mapping:'native-dual-cover',entity_top:'cover.example_absent_top',entity_bottom:'cover.example_absent_bottom'});c.presets[0].positions.push({top:22,bottom:55,ignored:true});await setup(page,c);await page.getByRole('button').click();expect(await calls(page)).toEqual([call(top,30),call(bottom,30)]);
  await page.evaluate(()=>{const w=window as any;w.calls=[];w.el.config.presets[0].positions[0].ignored=true;w.el.requestUpdate();w.el.activate(w.el.config.presets[0],new MouseEvent('click'))});await expect(page.getByRole('button')).toBeDisabled();expect(await calls(page)).toEqual([]);
 });
-for(const bad of ['unavailable','unknown','missing','features'])test(`all-pair preflight ${bad} prevents every earlier shade dispatch`,async({page})=>{
+for(const bad of ['unavailable','missing','features'])test(`all-pair preflight ${bad} prevents every earlier shade dispatch`,async({page})=>{
  const c=cfg();c.blinds.push({mapping:'native-dual-cover',entity_top:'cover.example_second_top',entity_bottom:'cover.example_second_bottom'});c.presets[0].positions.push({top:20,bottom:80});await setup(page,c);
  await page.evaluate(bad=>{const w=window as any;w.hass.states['cover.example_second_top']={state:'open',attributes:{supported_features:4}};w.hass.states['cover.example_second_bottom']={state:bad==='features'?'open':bad,attributes:{supported_features:bad==='features'?0:4}};if(bad==='missing')delete w.hass.states['cover.example_second_bottom'];w.el.hass={...w.hass};w.el.activate(w.el.config.presets[0],new MouseEvent('click'))},bad);expect(await calls(page)).toEqual([]);await expect(page.getByRole('button')).toBeDisabled();
+});
+test('unknown native pair accepts absolute intent without pretending to measure position',async({page})=>{
+ await setup(page);await report(page,top,null,'unknown');await report(page,bottom,null,'unknown');
+ const b=page.getByRole('button');await expect(b).toBeEnabled();await expect(b).toHaveAttribute('aria-pressed','false');
+ await b.click();expect(await calls(page)).toEqual([call(top,30),call(bottom,30)]);await expect(b).toHaveAttribute('aria-pressed','false');
 });
 test('unknown measured values never become zero but available motors may accept absolute intent',async({page})=>{
  await setup(page,cfg(0,100));await report(page,top,null);await expect(page.getByRole('button')).toHaveAttribute('aria-pressed','false');await page.getByRole('button').click();expect(await calls(page)).toEqual([call(top,0),call(bottom,0)]);

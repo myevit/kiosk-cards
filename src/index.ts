@@ -1,5 +1,5 @@
 export { KioskBaseCard, KioskEntityCard, KioskActionCard } from "./card.js";
-export { KioskBlindPresetsCard } from './blind-presets.js';
+export { KioskBlindPresetsCard, KioskBlindPresetsV2Card } from './blind-presets.js';
 export type { Blind, BlindPosition, BlindPreset, BlindPresetsConfig } from './blind-presets.js';
 export { kioskStyles, pillStyles, designTokens } from "./design.js";
 export type { Hass, Config, Action, Appearance, State } from "./types.js";
@@ -40,7 +40,7 @@ if (!badgeCatalog.some((b: any) => b.type === "kiosk-pill-card"))
   });
 const catalog = ((window as any).customCards ||= []);
 for (const [type, name, description] of [
-  ['kiosk-blind-presets-card', 'Kiosk blind presets', 'Picture-only composite sequential TDBU blind presets'],
+  ['kiosk-blind-presets-v2-card', 'Kiosk blind presets', 'Picture-only composite native dual-cover and legacy TDBU blind presets'],
   [
     "kiosk-entity-card",
     "Kiosk entity",

@@ -405,3 +405,5 @@ export class KioskBlindPresetsEditor extends LitElement {
 }
 if (!customElements.get("kiosk-blind-presets-editor"))
   customElements.define("kiosk-blind-presets-editor", KioskBlindPresetsEditor);
+if (!customElements.get("kiosk-blind-presets-v2-editor"))
+  customElements.define("kiosk-blind-presets-v2-editor", class extends KioskBlindPresetsEditor {});

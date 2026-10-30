@@ -2,7 +2,7 @@
 
 `rows × columns` is the preset capacity, not reserved empty space. Runtime height follows the actual preset count and responsive column count. Ignored shades retain their place in each picture as muted crossed-out windows; their saved targets are preserved.
 
-`custom:kiosk-blind-presets-card` is **one composite card**. Each picture is a whole native button showing absolute targets for all configured blinds, using each blind's chosen rail mapping. Names are accessible labels, never production tile captions. There is no long-hold configuration or browser-local preset storage. Use Home Assistant's standard visual card editor.
+`custom:kiosk-blind-presets-v2-card` is **one composite card**. The v2 card and `kiosk-blind-presets-v2-editor` use distinct guarded registrations, allowing native mapping even if an older bundle registered the legacy keys first. The legacy `custom:kiosk-blind-presets-card` key remains supported; migrate only the type when needed, preserving the rest of the config. This does not establish why any particular browser loaded older bytes. Each picture is a whole native button showing absolute targets for all configured blinds, using each blind's chosen rail mapping. Names are accessible labels, never production tile captions. There is no long-hold configuration or browser-local preset storage. Use Home Assistant's standard visual card editor.
 
 ```yaml
 type: custom:kiosk-blind-presets-card
@@ -98,6 +98,7 @@ Selection uses only raw `rail_top` / `rail_bottom`, never cached `current_positi
 ## Native dual-cover driver (permanent motor pair)
 
 ```yaml
+type: custom:kiosk-blind-presets-v2-card
 blinds:
   - mapping: native-dual-cover
     entity_top: cover.example_top
@@ -107,7 +108,7 @@ blinds:
 # Keep existing presets, absolute positions, ignored flags, and height unchanged.
 ```
 
-Each shade uses two distinct native `cover.*` entities. Both are required and must advertise SET_POSITION (bit 4); included pairs are preflighted together before any shade is dispatched. Missing, unknown or unavailable native states disable the picture. Missing measured positions do not prevent absolute targets on otherwise available motors, but can never select a picture. An optional old `entity` is identity-only: it is neither read nor commanded and need not exist in HA. Entity IDs must remain unique across all shade rows.
+Each shade uses two distinct native `cover.*` entities. Both are required and must advertise SET_POSITION (bit 4); included pairs are preflighted together before any shade is dispatched. Missing or unavailable native entities disable the picture. An entity reporting `unknown` may accept absolute targets when it advertises SET_POSITION, but cannot select a picture. Missing measured positions do not prevent absolute targets on otherwise available motors, but can never select a picture. An optional old `entity` is identity-only: it is neither read nor commanded and need not exist in HA. Entity IDs must remain unique across all shade rows.
 
 Absolute picture targets remain **T/B down from the window top**: publish `set_cover_position(entity_top, position=T)` and `set_cover_position(entity_bottom, position=100-B)` back-to-back, without waiting for motor arrival or the other rail's service return. Both targets are replaced on every valid activation, including an already-matching picture. In particular whole-picture OPEN (`0/0`) means native top **0**, native bottom **100**. Do not substitute native `open_cover` on the top motor: that motor's native OPEN is T=100, downward, not the card's whole-picture OPEN.
 

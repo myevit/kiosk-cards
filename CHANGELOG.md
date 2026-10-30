@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0
+
+- Add native dual-cover mapping with explicit top/bottom entity selectors, absolute T / 100−B targets and pair-scoped latest-intent publishing.
+- Permit absolute native commands with unknown telemetry while requiring actual stable measurements for picture selection; missing/unavailable entities and missing capabilities fail closed.
+- Register distinct v2 card/editor keys so old immutable browser registrations cannot retain the pre-native contract. Keep legacy keys/configs compatible; the picker creates v2 cards.
+- Preserve picture targets, Ignore flags, geometry and editor Save/Cancel; editing sends zero services. Extend synthetic coverage to 236 tests, including old-registration-first recovery.
+- Frontend release only: no driver, automation, remote or physical-device changes; hardware collision behavior is not verified.
+
 ## 0.9.2
 
 - Size the preset matrix from its actual buttons, not unused rows×columns capacity; remove invisible filler slots.

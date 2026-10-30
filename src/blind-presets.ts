@@ -171,7 +171,7 @@ type PlanStep = {service: string; data: Record<string, any>; pair?: {goal: PairG
 function pairAvailable(b: Blind, states: Record<string, State>) {
   return [b.entity_top!, b.entity_bottom!].every(id => {
     const s = states[id], features = s?.attributes.supported_features;
-    return !!s && ['open','closed','opening','closing'].includes(s.state) && typeof features === 'number' && Number.isInteger(features) && (features & 4) !== 0;
+    return !!s && ['open','closed','opening','closing','unknown'].includes(s.state) && typeof features === 'number' && Number.isInteger(features) && (features & 4) !== 0;
   });
 }
 function pairMatches(b: Blind, states: Record<string, State>, p: BlindPosition) {
@@ -353,7 +353,7 @@ export class KioskBlindPresetsCard extends LitElement {
     const s = this.hass.states[c.entity_id];
     if (this.config.blinds.some(b => b.mapping === 'native-dual-cover' && [b.entity_top,b.entity_bottom].includes(c.entity_id))) {
       const features = s?.attributes.supported_features;
-      return !!s && ['open','closed','opening','closing'].includes(s.state) && c.service === 'set_cover_position' && typeof features === 'number' && Number.isInteger(features) && (features & 4) !== 0;
+      return !!s && ['open','closed','opening','closing','unknown'].includes(s.state) && c.service === 'set_cover_position' && typeof features === 'number' && Number.isInteger(features) && (features & 4) !== 0;
     }
     if (!this.isIndependent(c.entity_id)) return nativeAvailable(s,c);
     const features = s?.attributes.supported_features;
@@ -548,3 +548,16 @@ export class KioskBlindPresetsCard extends LitElement {
 }
 if (!customElements.get("kiosk-blind-presets-card"))
   customElements.define("kiosk-blind-presets-card", KioskBlindPresetsCard);
+
+// A new registry key bypasses immutable pre-native card/editor registrations.
+export class KioskBlindPresetsV2Card extends KioskBlindPresetsCard {
+  static async getConfigElement() {
+    await import("./blind-presets-editor.js");
+    return document.createElement("kiosk-blind-presets-v2-editor");
+  }
+  static getStubConfig(hass?: Hass): BlindPresetsConfig {
+    return { ...super.getStubConfig(hass), type: "custom:kiosk-blind-presets-v2-card" };
+  }
+}
+if (!customElements.get("kiosk-blind-presets-v2-card"))
+  customElements.define("kiosk-blind-presets-v2-card", KioskBlindPresetsV2Card);
