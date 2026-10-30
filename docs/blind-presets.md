@@ -47,7 +47,7 @@ All example entities are synthetic. No scripts, scenes, helpers, additional reso
 
 ## Configuration
 
-- `blinds`: ordered list of 1–12 unique `cover.*` entities. Optional `name` labels the editor. `width` is a relative picture width greater than 0 and at most 10; default 1. Choose `mapping: sequential-tdbu` (also the omitted default) or `mapping: independent-tdbu` separately for each blind. These modes may coexist in one card.
+- `blinds`: ordered list of 1–12 shades with unique `cover.*` IDs. Optional `name` labels the editor. `width` is a relative picture width greater than 0 and at most 10; default 1. Choose `mapping: sequential-tdbu` (also the omitted default), `mapping: independent-tdbu`, or `mapping: native-dual-cover` separately for each blind. Native pairs require `entity_top` and `entity_bottom` instead of the legacy `entity`. These modes may coexist in one card.
 - `rows`, `columns`: integers 1–12. Their product is the maximum preset count. Empty slots preserve the chosen matrix shape. Columns wrap at narrow widths to preserve 44px touch targets. Rows are content-sized in native Sections; an explicit fixed HA `grid_options.rows` can clip a taller matrix.
 - `presets`: ordered list with unique nonempty `id`, nonempty accessible `name`, and one `positions` item per blind, in blind order. Coordinates are finite numbers 0–100 with `top <= bottom`.
 - Coordinates are **absolute percentages down from the top** of the window, not HA service percentages. `0/0` means fabric gathered at the top; `0/100` fully closed; `100/100` gathered at the bottom. A thin gathered fabric strip is still drawn at either endpoint.
@@ -94,6 +94,32 @@ The card awaits only each Home Assistant service publish return before sending t
 Selection uses only raw `rail_top` / `rail_bottom`, never cached `current_position` / `current_tilt_position`, target echoes, or service acknowledgement. Both numeric rails, stable `open`/`closed` state, and `STOP` for any supplied motion attributes are required for whole-picture selection (two-point tolerance). Explicit `rails_known:false` prevents whole-picture selection; if omitted, both unique numeric raw fields suffice.
 
 **Physical risk:** motor/driver control owns movement and collision handling; actual motor collision behavior has not been verified by these frontend tests.
+
+## Native dual-cover driver (permanent motor pair)
+
+```yaml
+blinds:
+  - mapping: native-dual-cover
+    entity_top: cover.example_top
+    entity_bottom: cover.example_bottom
+    name: Example
+    width: 1
+# Keep existing presets, absolute positions, ignored flags, and height unchanged.
+```
+
+Each shade uses two distinct native `cover.*` entities. Both are required and must advertise SET_POSITION (bit 4); included pairs are preflighted together before any shade is dispatched. Missing, unknown or unavailable native states disable the picture. Missing measured positions do not prevent absolute targets on otherwise available motors, but can never select a picture. An optional old `entity` is identity-only: it is neither read nor commanded and need not exist in HA. Entity IDs must remain unique across all shade rows.
+
+Absolute picture targets remain **T/B down from the window top**: publish `set_cover_position(entity_top, position=T)` and `set_cover_position(entity_bottom, position=100-B)` back-to-back, without waiting for motor arrival or the other rail's service return. Both targets are replaced on every valid activation, including an already-matching picture. In particular whole-picture OPEN (`0/0`) means native top **0**, native bottom **100**. Do not substitute native `open_cover` on the top motor: that motor's native OPEN is T=100, downward, not the card's whole-picture OPEN.
+
+Only actual native `current_position` numbers in 0–100 select a picture, when **both** entities have stable open/closed states and match within two points. Null, omitted, nonnumeric and nonfinite reports are never coerced to zero. No cached tilt/derived rail fields or target acknowledgements are used. Ignored shades produce zero actions, preflight checks or selection requirements. Pair selectors appear in the normal editor; ordinary absolute T/B, Ignore, Save/Cancel and height semantics stay unchanged. There is no native-command override UI.
+
+Native intent is keyed by the physical top/bottom pair, not an individual axis. Native cards sharing the same HA client's `callService` function share latest-intent replacement; each native entity retains its own publish fence across timeout, reconfiguration and removal until its outstanding service settles. Legacy recipe/sequential/independent transport lanes are separate and retain their existing behavior. Sharing does not extend across browser tabs or different HA client instances. Motor collision control remains the native driver/hardware's responsibility.
+
+### Migration: explicit callers, no compatibility facade
+
+Keep a fresh copy of the current dashboard configuration before migration; do not replace user-edited presets with an example or old snapshot. Change only each migrated blind's mapping and native entity pair, preserving its order, width/name, all positions/Ignore flags, IDs/names, grid/visibility fields and height. The optional old identity can be retained or removed deliberately. Remove legacy `commands`/`actions` for migrated presets explicitly in YAML after checking their intended absolute picture. Native pair entities (and identity-only IDs) are **not** added to the legacy recipe allowlist.
+
+Update automations, scripts, scenes, remotes and dashboards that call the old scalar cover explicitly to the new native motor pair and the appropriate per-motor position/direction. Do not install a custom HA compatibility component, facade, helper script or invented upstream ID. Card support does not itself migrate those callers or discover actual upstream entity IDs. Old card mappings/configurations remain unchanged unless explicitly migrated. Qualification here is offline synthetic HA service transport: zero physical operations; production migration, physical direction/report checks, publication and versioning require separate approval/review.
 
 ## Advanced: backward-compatible inline native commands
 

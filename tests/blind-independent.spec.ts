@@ -204,7 +204,7 @@ test('independent explicit partial command needs only its own axis and not uncom
 });
 test('mapping is selectable per blind; preset cancel and save preserve independent mapping and picture',async({page})=>{
  const c=config();delete c.blinds[0].mapping;await setup(page,c,{},'open',true);
- expect(await page.locator('[data-blind="0"]').evaluate((e:any)=>e.schema.find((s:any)=>s.name==='mapping').selector.select.options.map((o:any)=>o.value))).toEqual(['sequential-tdbu','independent-tdbu']);
+ expect(await page.locator('[data-blind="0"]').evaluate((e:any)=>e.schema.find((s:any)=>s.name==='mapping').selector.select.options.map((o:any)=>o.value))).toEqual(['sequential-tdbu','independent-tdbu','native-dual-cover']);
  await page.locator('[data-blind="0"]').evaluate((e:any)=>e.dispatchEvent(new CustomEvent('value-changed',{detail:{value:{mapping:'independent-tdbu'}},bubbles:true,composed:true})));
  await page.getByRole('button',{name:'Edit Band'}).click();await expect(page.getByRole('button',{name:'Save',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'Cancel',exact:true}).click();await page.getByRole('button',{name:'Edit Band'}).click();await page.getByRole('button',{name:'Save',exact:true}).click();

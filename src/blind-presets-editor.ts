@@ -14,17 +14,16 @@ const number = (name: string, min: number, max: number, step = 1) => ({
   selector: { number: { min, max, step, mode: "box" } },
 });
 const text = (name: string) => ({ name, selector: { text: {} } });
-const blindSchema = [
-  {
-    name: "entity",
-    required: true,
-    selector: { entity: { filter: { domain: "cover" } } },
-  },
+const blindSchema = (b: Partial<Blind>) => [
+  ...(b.mapping === 'native-dual-cover'
+    ? ['entity_top','entity_bottom'].map(name => ({name,required:true,selector:{entity:{filter:{domain:'cover'}}}}))
+    : [{name:'entity',required:true,selector:{entity:{filter:{domain:'cover'}}}}]),
   text("name"),
   number("width", 0.1, 10, 0.1),
   {name:'mapping',selector:{select:{mode:'dropdown',options:[
     {value:'sequential-tdbu',label:'Sequential TDBU (default)'},
     {value:'independent-tdbu',label:'Independent top and bottom rails'},
+    {value:'native-dual-cover',label:'Native top and bottom cover pair'},
   ]}}},
 ];
 export class KioskBlindPresetsEditor extends LitElement {
@@ -86,6 +85,12 @@ export class KioskBlindPresetsEditor extends LitElement {
     e.stopPropagation();
     const c = structuredClone(this.config);
     c.blinds[i] = { ...c.blinds[i], ...e.detail.value };
+    // Keep incomplete pair selection local until both required selectors are filled.
+    if (c.blinds[i].mapping === 'native-dual-cover' && (!c.blinds[i].entity_top || !c.blinds[i].entity_bottom)) {
+      this.config = c;
+      this.error = 'Choose top and bottom cover entities';
+      return;
+    }
     this.emit(c);
   }
   private moveBlind(i: number, d: number) {
@@ -160,6 +165,8 @@ export class KioskBlindPresetsEditor extends LitElement {
       rows: "Grid rows",
       columns: "Grid columns",
       entity: "Cover entity",
+      entity_top: "Top rail cover",
+      entity_bottom: "Bottom rail cover",
       name: "Accessible name",
       width: "Relative picture width",
       mapping: "Rail mapping",
@@ -337,7 +344,7 @@ export class KioskBlindPresetsEditor extends LitElement {
               data-blind=${i}
               .hass=${this.hass}
               .data=${{...b,mapping:b.mapping ?? 'sequential-tdbu'}}
-              .schema=${blindSchema}
+              .schema=${blindSchema(b)}
               .computeLabel=${this.label}
               @value-changed=${(e: CustomEvent) => this.updateBlind(i, e)}
             ></ha-form>
@@ -369,7 +376,7 @@ export class KioskBlindPresetsEditor extends LitElement {
         data-new-blind
         .hass=${this.hass}
         .data=${this.newBlind}
-        .schema=${blindSchema}
+        .schema=${blindSchema(this.newBlind)}
         .computeLabel=${this.label}
         @value-changed=${(e: CustomEvent) => {
           e.stopPropagation();
@@ -378,7 +385,7 @@ export class KioskBlindPresetsEditor extends LitElement {
       ></ha-form>
       <div class="actions">
         <button
-          ?disabled=${this.config.blinds.length >= 12 || !this.newBlind.entity}
+          ?disabled=${this.config.blinds.length >= 12 || (this.newBlind.mapping === 'native-dual-cover' ? !this.newBlind.entity_top || !this.newBlind.entity_bottom : !this.newBlind.entity)}
           @click=${() => this.addBlind()}
         >
           Add blind
