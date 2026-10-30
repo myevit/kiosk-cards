@@ -1,4 +1,16 @@
 import { test, expect } from "@playwright/test";
+test('height follows actual presets rather than empty capacity when duplicating and editing',async({page})=>{
+ const c=structuredClone(config);c.rows=3;await mount(page,c);
+ const measure=()=>page.evaluate(()=>{const c=(window as any).card;c.style.width='360px';const m=c.shadowRoot.querySelector('.matrix');return{height:m.getBoundingClientRect().height,tile:c.shadowRoot.querySelector('button').getBoundingClientRect().height,size:c.getCardSize(),slots:m.querySelectorAll('.slot').length}});
+ await expect.poll(async()=> (await measure()).height).toBeLessThan(110);
+ let m=await measure();expect(m.slots).toBe(0);expect(m.height).toBeCloseTo(m.tile,1);expect(m.size).toBe(Math.ceil(m.height/50));
+ c.columns=2;await page.evaluate(c=>(window as any).card.setConfig(c),c);await page.waitForTimeout(40);m=await measure();expect(m.height).toBeCloseTo(2*m.tile+12,1);expect(m.size).toBe(Math.ceil(m.height/50));
+ c.presets=c.presets.slice(0,1);await page.evaluate(c=>(window as any).card.setConfig(c),c);await page.waitForTimeout(40);m=await measure();expect(m.height).toBeCloseTo(m.tile,1);expect(m.size).toBe(Math.ceil(m.height/50));expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
+});
+test('ignored shades use crossed neutral windows while included shade keeps its target picture',async({page})=>{
+ const c=structuredClone(config) as any;c.presets[0].positions[1].ignored=true;c.presets[0].positions[2].ignored=true;await mount(page,c);
+ const picture=page.getByRole('button',{name:'Open',exact:true}).locator('svg');await expect(picture.locator('[data-ignored]')).toHaveCount(2);await expect(picture.locator('[data-ignore-mark]')).toHaveCount(2);await expect(picture.locator('[data-fabric]')).toHaveCount(1);expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
+});
 const config = {
   type: "custom:kiosk-blind-presets-card",
   rows: 1,

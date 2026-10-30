@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.2
+
+- Size the preset matrix from its actual buttons, not unused rows×columns capacity; remove invisible filler slots.
+- Draw ignored shades as muted crossed-out windows in both editor previews and runtime icons.
+
 ## 0.9.1
 
 - Send independent top/bottom targets back-to-back without motor-arrival waits, cold homing, or software clearance sequencing.

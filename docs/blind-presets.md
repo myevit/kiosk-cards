@@ -1,5 +1,7 @@
 # Picture-only blind preset matrix
 
+`rows × columns` is the preset capacity, not reserved empty space. Runtime height follows the actual preset count and responsive column count. Ignored shades retain their place in each picture as muted crossed-out windows; their saved targets are preserved.
+
 `custom:kiosk-blind-presets-card` is **one composite card**. Each picture is a whole native button showing absolute targets for all configured blinds, using each blind's chosen rail mapping. Names are accessible labels, never production tile captions. There is no long-hold configuration or browser-local preset storage. Use Home Assistant's standard visual card editor.
 
 ```yaml
