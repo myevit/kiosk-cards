@@ -42,7 +42,7 @@ export function blindPicture(blinds: Blind[], positions: BlindPosition[]) {
         left = x;
       x += w + 4;
       const p = positions[i] ?? { top: 0, bottom: 100 };
-      if (p.ignored) return svg`<g data-ignored opacity="0.35"><rect x=${left} y="12" width=${w} height="76" rx="1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 3"/></g>`;
+      if (p.ignored) return svg`<g data-ignored opacity="0.35"><rect x=${left} y="12" width=${w} height="76" rx="1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 3"/><path data-ignore-mark d=${`M ${left} 88 L ${left + w} 12`} fill="none" stroke="currentColor" stroke-width="2"/></g>`;
       return svg`<g><rect x=${left} y="12" width=${w} height="76" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect data-fabric x=${left} y=${12 + Math.min(74, (76 * p.top) / 100)} width=${w} height=${Math.max(2, (76 * (p.bottom - p.top)) / 100)} rx="1" fill="currentColor"/></g>`;
     },
   )}</svg>`;
@@ -402,7 +402,7 @@ export class KioskBlindPresetsCard extends LitElement {
     // HA can ask for masonry size before ResizeObserver's first callback.
     const width = this.getBoundingClientRect().width || this.cardWidth;
     const columns = this.columnsForWidth(width);
-    const rows = Math.ceil(this.config.rows * this.config.columns / columns);
+    const rows = Math.ceil(this.config.presets.length / columns);
     const tileHeight = Math.max(44, (width - (columns - 1) * 12) / columns / 1.2133333);
     return Math.ceil((rows * tileHeight + (rows - 1) * 12) / 50);
   }
@@ -427,10 +427,6 @@ export class KioskBlindPresetsCard extends LitElement {
         padding: 0;
         box-sizing: border-box;
         background: transparent;
-      }
-      .slot {
-        aspect-ratio: 1.2133333;
-        min-height: 44px;
       }
       button.tile {
         display: flex;
@@ -492,7 +488,7 @@ export class KioskBlindPresetsCard extends LitElement {
           >
             ${blindPicture(this.config.blinds, p.positions)}
           </button>`;
-        })}${Array.from({ length: this.config.rows * this.config.columns - this.config.presets.length }, () => html`<div class="slot" aria-hidden="true"></div>`)}
+        })}
       </div>`;
   }
 }
