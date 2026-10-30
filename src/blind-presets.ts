@@ -9,10 +9,12 @@ export interface BlindPosition {
   [key: string]: unknown;
 }
 export interface Blind {
-  entity: string;
+  entity?: string;
+  entity_top?: string;
+  entity_bottom?: string;
   name?: string;
   width?: number;
-  mapping?: "sequential-tdbu" | "independent-tdbu";
+  mapping?: "sequential-tdbu" | "independent-tdbu" | "native-dual-cover";
   [key: string]: unknown;
 }
 export interface BlindPreset {
@@ -62,14 +64,15 @@ export function validateBlindConfig(c: BlindPresetsConfig) {
     throw Error("Choose 1–12 blinds");
   const ids = new Set<string>();
   for (const b of c.blinds) {
-    if (
-      !b ||
-      typeof b.entity !== "string" ||
-      !/^cover\.[a-z0-9_]+$/.test(b.entity) ||
-      ids.has(b.entity)
-    )
-      throw Error("Choose unique cover entities");
-    ids.add(b.entity);
+    if (!b) throw Error("Choose unique cover entities");
+    const entities = b.mapping === 'native-dual-cover'
+      ? [b.entity_top, b.entity_bottom, ...(b.entity === undefined ? [] : [b.entity])]
+      : [b.entity];
+    for (const entity of entities) {
+      if (typeof entity !== 'string' || !/^cover\.[a-z0-9_]+$/.test(entity) || ids.has(entity))
+        throw Error('Choose unique cover entities (native dual cover requires distinct top and bottom)');
+      ids.add(entity);
+    }
     if (
       b.width !== undefined &&
       (typeof b.width !== "number" ||
@@ -78,8 +81,8 @@ export function validateBlindConfig(c: BlindPresetsConfig) {
         b.width > 10)
     )
       throw Error("Blind widths must be greater than 0 and at most 10");
-    if (b.mapping !== undefined && !['sequential-tdbu', 'independent-tdbu'].includes(b.mapping))
-      throw Error("Choose sequential-tdbu or independent-tdbu mapping");
+    if (b.mapping !== undefined && !['sequential-tdbu', 'independent-tdbu', 'native-dual-cover'].includes(b.mapping))
+      throw Error("Choose sequential-tdbu, independent-tdbu or native-dual-cover mapping");
   }
   if (!Array.isArray(c.presets) || c.presets.length > c.rows * c.columns)
     throw Error("Remove presets before shrinking the grid");
@@ -97,7 +100,7 @@ export function validateBlindConfig(c: BlindPresetsConfig) {
     ids.add(p.id);
     if (p.commands !== undefined && p.actions !== undefined) throw Error('Use commands or actions, not both');
     if (p.commands !== undefined || p.actions !== undefined)
-      validateCommands(p.commands ?? p.actions, c.blinds.map(b => b.entity));
+      validateCommands(p.commands ?? p.actions, c.blinds.flatMap(b => b.mapping !== 'native-dual-cover' && b.entity ? [b.entity] : []));
     if (!Array.isArray(p.positions) || p.positions.length !== c.blinds.length)
       throw Error("Each preset needs one position per blind");
     for (const v of p.positions) {
@@ -121,7 +124,7 @@ function includedCommands(p: BlindPreset, blinds?: Blind[]) {
 export function presetProblem(p: BlindPreset, blinds?: Blind[]) {
   if (!p.positions.some(v => !v.ignored)) return 'Include at least one shade';
   if (p.commands !== undefined || p.actions !== undefined) return includedCommands(p,blinds)?.length ? '' : 'Include at least one native command';
-  return p.positions.some((v, i) => !v.ignored && blinds?.[i]?.mapping !== 'independent-tdbu' && v.top !== 0 && v.bottom !== 100)
+  return p.positions.some((v, i) => !v.ignored && !['independent-tdbu', 'native-dual-cover'].includes(blinds?.[i]?.mapping ?? '') && v.top !== 0 && v.bottom !== 100)
     ? "Unsupported sequential TDBU position: top must be 0 or bottom must be 100."
     : "";
 }
@@ -160,19 +163,35 @@ function independentMatches(s: State | undefined, c: BlindCommand) {
   const expected = top ? c.tilt_position : c.position;
   return Math.abs((top ? measured : 100-measured) - expected!) <= 2;
 }
-type PlanStep = {service: string; data: Record<string, any>};
+type PairGoal = { active: boolean; cancels: Set<() => void> };
+type PairScope = { goals: Map<string, PairGoal>; transports: Map<string, Promise<unknown>> };
+// Two dashboard cards in one HA client share native intent, never legacy recipe lanes.
+const pairScopes = new WeakMap<Hass['callService'], PairScope>();
+type PlanStep = {service: string; data: Record<string, any>; pair?: {goal: PairGoal; scope: PairScope}};
+function pairAvailable(b: Blind, states: Record<string, State>) {
+  return [b.entity_top!, b.entity_bottom!].every(id => {
+    const s = states[id], features = s?.attributes.supported_features;
+    return !!s && ['open','closed','opening','closing','unknown'].includes(s.state) && typeof features === 'number' && Number.isInteger(features) && (features & 4) !== 0;
+  });
+}
+function pairMatches(b: Blind, states: Record<string, State>, p: BlindPosition) {
+  return [b.entity_top!, b.entity_bottom!].every((id, i) => {
+    const s = states[id], value = s?.attributes.current_position;
+    return !!s && ['open','closed'].includes(s.state) && typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100 && Math.abs(value - (i === 0 ? p.top : 100-p.bottom)) <= 2;
+  });
+}
 function independentPlan(b: Blind, s: State | undefined, p: BlindPosition): PlanStep[] {
   if (!s || !['open','closed','opening','closing','unknown'].includes(s.state)) throw Error('Independent blind unavailable');
   const features = s.attributes.supported_features;
   if (typeof features !== 'number' || !Number.isInteger(features) || (features & 132) !== 132) throw Error('Required independent capability unavailable');
   // Always replace both motor targets, including when measured coordinates match.
   return [
-    {service:'set_cover_tilt_position', data:{entity_id:b.entity, tilt_position:p.top}},
-    {service:'set_cover_position', data:{entity_id:b.entity, position:100-p.bottom}},
+    {service:'set_cover_tilt_position', data:{entity_id:b.entity!, tilt_position:p.top}},
+    {service:'set_cover_position', data:{entity_id:b.entity!, position:100-p.bottom}},
   ];
 }
 function matches(s: State | undefined, p: BlindPosition, b?: Blind) {
-  if (b?.mapping === 'independent-tdbu') return s?.attributes.rails_known !== false && independentMatches(s, {service:'set_cover_tilt_position',entity_id:b.entity,tilt_position:p.top}) && independentMatches(s, {service:'set_cover_position',entity_id:b.entity,position:100-p.bottom});
+  if (b?.mapping === 'independent-tdbu') return s?.attributes.rails_known !== false && independentMatches(s, {service:'set_cover_tilt_position',entity_id:b.entity!,tilt_position:p.top}) && independentMatches(s, {service:'set_cover_position',entity_id:b.entity!,position:100-p.bottom});
   return (
     available(s) &&
     !["opening", "closing"].includes(s!.state) &&
@@ -242,10 +261,12 @@ export class KioskBlindPresetsCard extends LitElement {
   private publishCancels = new Set<() => void>();
   // Only uncancellable publishes live here; superseded goals never append to a FIFO.
   private transports = new Map<string, Promise<unknown>>();
+  private releasePairs: (() => void)[] = [];
   private async publishRail(step: PlanStep, live: () => boolean, cancelled: Promise<false>) {
     const id = step.data.entity_id;
-    while (this.transports.has(id)) {
-      await Promise.race([this.transports.get(id), cancelled]);
+    const transports = step.pair?.scope.transports ?? this.transports;
+    while (transports.has(id)) {
+      await Promise.race([transports.get(id), cancelled]);
       if (!live()) return false;
     }
     if (!live()) return false;
@@ -256,23 +277,24 @@ export class KioskBlindPresetsCard extends LitElement {
     });
     // Catch separately: a stale failure cannot reject a newer goal waiting for the lane.
     const settled = publish.catch(() => undefined);
-    this.transports.set(id, settled);
-    settled.then(() => { if (this.transports.get(id) === settled) { this.transports.delete(id); this.requestUpdate(); } });
+    transports.set(id, settled);
+    settled.then(() => { if (transports.get(id) === settled) { transports.delete(id); this.requestUpdate(); } });
     await publish;
     return live();
   }
   private async runPlan(p: BlindPreset, plan: PlanStep[], token: number) {
     // Legacy recipes retain their order; independent shades publish in parallel.
-    const parallel = !(p.commands || p.actions) && this.config.blinds.some(b => b.mapping === 'independent-tdbu');
+    const parallel = !(p.commands || p.actions) && this.config.blinds.some(b => ['independent-tdbu','native-dual-cover'].includes(b.mapping ?? ''));
     const groups = parallel ? [...new Set(plan.map(step => step.data.entity_id))].map(id => plan.filter(step => step.data.entity_id === id)) : [plan];
     await Promise.allSettled(groups.map(async steps => {
       try {
         for (const step of steps) {
           let active = true;
           let cancel!: () => void;
-          const live = () => active && this.operation === token && this.isConnected;
+          const live = () => active && this.operation === token && this.isConnected && (step.pair?.goal.active ?? true);
           const cancelled = new Promise<false>(resolve => { cancel = () => { active = false; resolve(false); }; });
           this.publishCancels.add(cancel);
+          step.pair?.goal.cancels.add(cancel);
           const timer = setTimeout(() => {
             if (live()) this.error = 'Publish timed out. Check device.';
             cancel();
@@ -282,6 +304,7 @@ export class KioskBlindPresetsCard extends LitElement {
           } finally {
             clearTimeout(timer);
             this.publishCancels.delete(cancel);
+            step.pair?.goal.cancels.delete(cancel);
             cancel();
           }
         }
@@ -292,6 +315,8 @@ export class KioskBlindPresetsCard extends LitElement {
     if (this.operation === token) this.busy = false;
   }
   private invalidate() {
+    for (const release of this.releasePairs) release();
+    this.releasePairs = [];
     for (const cancel of this.publishCancels) cancel();
     this.publishCancels.clear();
     this.operation++;
@@ -308,7 +333,7 @@ export class KioskBlindPresetsCard extends LitElement {
     return (
       !old ||
       this.config.blinds.some(
-        (b) => old.states[b.entity] !== this.hass.states[b.entity],
+        (b) => (b.mapping === 'native-dual-cover' ? [b.entity_top!, b.entity_bottom!] : [b.entity!]).some(id => old.states[id] !== this.hass.states[id]),
       )
     );
   }
@@ -316,7 +341,7 @@ export class KioskBlindPresetsCard extends LitElement {
     if (presetProblem(p,this.config.blinds)) return false;
     const commands = includedCommands(p,this.config.blinds);
     return commands ? commands.length > 0 && commands.every(c => this.commandMatches(c))
-      : this.config.blinds.every((b, i) => p.positions[i].ignored || matches(this.hass.states[b.entity], p.positions[i], b));
+      : this.config.blinds.every((b, i) => p.positions[i].ignored || (b.mapping === 'native-dual-cover' ? pairMatches(b,this.hass.states,p.positions[i]) : matches(this.hass.states[b.entity!], p.positions[i], b)));
   }
   private isIndependent(entity: string) {
     return this.config.blinds.find(b => b.entity === entity)?.mapping === 'independent-tdbu';
@@ -326,6 +351,10 @@ export class KioskBlindPresetsCard extends LitElement {
   }
   private commandAvailable(c: BlindCommand) {
     const s = this.hass.states[c.entity_id];
+    if (this.config.blinds.some(b => b.mapping === 'native-dual-cover' && [b.entity_top,b.entity_bottom].includes(c.entity_id))) {
+      const features = s?.attributes.supported_features;
+      return !!s && ['open','closed','opening','closing','unknown'].includes(s.state) && c.service === 'set_cover_position' && typeof features === 'number' && Number.isInteger(features) && (features & 4) !== 0;
+    }
     if (!this.isIndependent(c.entity_id)) return nativeAvailable(s,c);
     const features = s?.attributes.supported_features;
     const capability = {open_cover:1,close_cover:2,set_cover_position:4,set_cover_tilt_position:128}[c.service];
@@ -347,8 +376,16 @@ export class KioskBlindPresetsCard extends LitElement {
     if (presetProblem(p, this.config.blinds)) throw Error(presetProblem(p, this.config.blinds));
     return this.config.blinds.flatMap((b, i) => {
       if (p.positions[i].ignored) return [];
-      const s = this.hass.states[b.entity],
+      const s = this.hass.states[b.entity!],
         v = p.positions[i];
+      if (b.mapping === 'native-dual-cover') {
+        if (!pairAvailable(b,this.hass.states)) throw Error('Required native pair capability unavailable');
+        // Replace both targets even at the measured picture: an older motor goal may still be active.
+        return [
+          {service:'set_cover_position',data:{entity_id:b.entity_top!,position:v.top}},
+          {service:'set_cover_position',data:{entity_id:b.entity_bottom!,position:100-v.bottom}},
+        ];
+      }
       if (b.mapping === 'independent-tdbu') {
         return independentPlan(b,s,v);
       }
@@ -386,6 +423,23 @@ export class KioskBlindPresetsCard extends LitElement {
     this.invalidate();
     this.error = '';
     if (!plan.length) return;
+    for (const [i,b] of this.config.blinds.entries()) {
+      if (b.mapping !== 'native-dual-cover' || p.positions[i].ignored || p.commands || p.actions) continue;
+      let scope = pairScopes.get(this.hass.callService);
+      if (!scope) { scope = {goals:new Map(),transports:new Map()}; pairScopes.set(this.hass.callService,scope); }
+      const key = `${b.entity_top}/${b.entity_bottom}`;
+      const old = scope.goals.get(key);
+      if (old) { old.active = false; for (const cancel of old.cancels) cancel(); }
+      const goal: PairGoal = {active:true,cancels:new Set()};
+      scope.goals.set(key,goal);
+      const ownedScope = scope;
+      this.releasePairs.push(() => {
+        goal.active = false;
+        for (const cancel of goal.cancels) cancel();
+        if (ownedScope.goals.get(key) === goal) ownedScope.goals.delete(key);
+      });
+      for (const step of plan) if ([b.entity_top,b.entity_bottom].includes(step.data.entity_id)) step.pair = {goal,scope};
+    }
     this.busy = true;
     await this.runPlan(p,plan,this.operation);
   }
@@ -468,7 +522,7 @@ export class KioskBlindPresetsCard extends LitElement {
           const problem =
             presetProblem(p, this.config.blinds) ||
             ((includedCommands(p,this.config.blinds)?.every(c => this.commandAvailable(c)) ?? this.config.blinds.every((b,i) =>
-              p.positions[i].ignored || (b.mapping === 'independent-tdbu' ? !!this.hass.states[b.entity] && this.hass.states[b.entity].state !== 'unavailable' : available(this.hass.states[b.entity])),
+              p.positions[i].ignored || (b.mapping === 'native-dual-cover' ? pairAvailable(b,this.hass.states) : b.mapping === 'independent-tdbu' ? !!this.hass.states[b.entity!] && this.hass.states[b.entity!].state !== 'unavailable' : available(this.hass.states[b.entity!])),
             ))
               ? ""
               : "Blind unavailable");
@@ -494,3 +548,16 @@ export class KioskBlindPresetsCard extends LitElement {
 }
 if (!customElements.get("kiosk-blind-presets-card"))
   customElements.define("kiosk-blind-presets-card", KioskBlindPresetsCard);
+
+// A new registry key bypasses immutable pre-native card/editor registrations.
+export class KioskBlindPresetsV2Card extends KioskBlindPresetsCard {
+  static async getConfigElement() {
+    await import("./blind-presets-editor.js");
+    return document.createElement("kiosk-blind-presets-v2-editor");
+  }
+  static getStubConfig(hass?: Hass): BlindPresetsConfig {
+    return { ...super.getStubConfig(hass), type: "custom:kiosk-blind-presets-v2-card" };
+  }
+}
+if (!customElements.get("kiosk-blind-presets-v2-card"))
+  customElements.define("kiosk-blind-presets-v2-card", KioskBlindPresetsV2Card);

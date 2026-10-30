@@ -146,7 +146,7 @@ test("picture-only registered composite renders exact absolute geometry includin
   expect(
     await page.evaluate(() =>
       (window as any).customCards.some(
-        (c: any) => c.type === "kiosk-blind-presets-card",
+        (c: any) => c.type === "kiosk-blind-presets-v2-card",
       ),
     ),
   ).toBe(true);
