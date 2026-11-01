@@ -270,13 +270,17 @@ export class KioskBlindPresetsCard extends LitElement {
     busy: { state: true },
     error: { state: true },
     cardWidth: { state: true },
+    matrixGap: { state: true },
   };
   private cardWidth = 320;
+  private matrixGap = 8;
   private resize?: ResizeObserver;
   connectedCallback() {
     super.connectedCallback();
     this.resize = new ResizeObserver((entries) => {
       this.cardWidth = entries[0].contentRect.width;
+      // Resolve themed units after mount even when the initial width is unchanged.
+      this.matrixGap = this.gridGap();
     });
     this.resize.observe(this);
   }

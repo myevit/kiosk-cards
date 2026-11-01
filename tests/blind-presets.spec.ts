@@ -44,6 +44,47 @@ for (const width of [320, 420, 768, 1144])
     }
     expect(geometry.calls).toEqual([]);
   });
+for (const themed of [false, true])
+  test(`first mount at observer default width resolves ${themed ? 'root rem' : 'default'} gap without overflow`, async ({ page }) => {
+    await page.goto('/tests/harness.html');
+    await page.waitForFunction(() => (window as any).ready);
+    const result = await page.evaluate(async themed => {
+      document.documentElement.style.fontSize = '16px';
+      const card = document.createElement('kiosk-blind-presets-v2-card') as any;
+      card.style.cssText = 'width:320px;font-size:20px';
+      if (themed) card.style.setProperty('--ha-section-grid-column-gap', '1rem');
+      const config = card.constructor.getStubConfig();
+      config.rows = 2;
+      config.columns = 6;
+      config.presets = Array.from({length:6}, (_, i) => ({...config.presets[0],id:`p${i}`,name:`Preset ${i}`}));
+      const calls: unknown[] = [];
+      card.hass = {states:{},callService:(...args: unknown[]) => calls.push(args)};
+      card.setConfig(config);
+      document.querySelector('#mount')!.append(card);
+      let updates = 0;
+      const update = card.updated.bind(card);
+      card.updated = (...args: unknown[]) => { updates++; update(...args); };
+      await card.updateComplete;
+      await new Promise(resolve => setTimeout(resolve, 150));
+      await card.updateComplete;
+      const matrix = card.shadowRoot.querySelector('.matrix');
+      const style = getComputedStyle(matrix);
+      const settledUpdates = updates;
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return {width:matrix.getBoundingClientRect().width,scrollWidth:matrix.scrollWidth,
+        height:matrix.getBoundingClientRect().height,columns:style.gridTemplateColumns.split(' ').length,
+        gap:style.columnGap,size:card.getCardSize(),settledUpdates,updates,calls};
+    }, themed);
+    console.log('FIRST_MOUNT', JSON.stringify({themed,...result}));
+    expect.soft(result.gap).toBe(themed ? '16px' : '8px');
+    expect.soft(result.columns).toBe(themed ? 5 : 6);
+    expect.soft(result.height).toBe(themed ? 308 : 146);
+    expect.soft(result.scrollWidth).toBeLessThanOrEqual(result.width);
+    expect.soft(result.size).toBe(Math.ceil(result.height / 50));
+    expect(result.updates).toBe(result.settledUpdates);
+    expect(result.updates).toBeLessThanOrEqual(3);
+    expect(result.calls).toEqual([]);
+  });
 test('themed gap and shared Large height drive wrapping and masonry size without empty rows', async ({ page }) => {
   await mount(page, {...config, rows: 3, columns: 12});
   const size = await page.evaluate(async () => {
