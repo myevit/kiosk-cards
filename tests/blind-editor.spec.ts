@@ -70,6 +70,27 @@ async function change(page: any, selector: string, data: any) {
       data,
     );
 }
+test('editor pictures and draft preview reuse runtime Large geometry and theme', async ({ page }) => {
+  await setup(page);
+  await page.addStyleTag({content:'body{--ha-section-grid-column-gap:10px;--kiosk-radius:19px;--kiosk-background:rgb(20,30,40);--kiosk-glyph:rgb(100,110,120)}'});
+  const measure = (selector: string) => page.locator(selector).first().evaluate(el => {
+    const s=getComputedStyle(el),svg=el.querySelector('svg')!;
+    return {height:el.getBoundingClientRect().height,radius:s.borderRadius,background:s.backgroundColor,color:s.color,shadow:s.boxShadow,padding:s.padding,svgHeight:svg.getBoundingClientRect().height};
+  });
+  const tile = await measure('.pictures .tile');
+  expect.soft(tile.height).toBe(146);
+  expect.soft(tile.radius).toBe('19px');
+  expect.soft(tile.background).toBe('rgb(20, 30, 40)');
+  expect.soft(tile.color).toBe('rgb(100, 110, 120)');
+  expect.soft(tile.padding).toBe('0px');
+  expect.soft(tile.svgHeight).toBeLessThanOrEqual(110);
+  expect.soft(await page.locator('.pictures').evaluate(el=>getComputedStyle(el).gap)).toBe('10px');
+  await page.getByRole('button',{name:'Edit A',exact:true}).click();
+  expect(await measure('[data-preview]')).toEqual(tile);
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();
+  expect(await page.evaluate(()=>(window as any).changes)).toEqual([]);
+  expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
+});
 test('picture workflow has no script import or manual native command controls and never reads HA', async ({page}) => {
   await setup(page);
   await page.evaluate(() => {

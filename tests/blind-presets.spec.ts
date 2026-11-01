@@ -2,10 +2,213 @@ import { test, expect } from "@playwright/test";
 test('height follows actual presets rather than empty capacity when duplicating and editing',async({page})=>{
  const c=structuredClone(config);c.rows=3;await mount(page,c);
  const measure=()=>page.evaluate(()=>{const c=(window as any).card;c.style.width='360px';const m=c.shadowRoot.querySelector('.matrix');return{height:m.getBoundingClientRect().height,tile:c.shadowRoot.querySelector('button').getBoundingClientRect().height,size:c.getCardSize(),slots:m.querySelectorAll('.slot').length}});
- await expect.poll(async()=> (await measure()).height).toBeLessThan(110);
+ await expect.poll(async()=> (await measure()).height).toBe(146);
  let m=await measure();expect(m.slots).toBe(0);expect(m.height).toBeCloseTo(m.tile,1);expect(m.size).toBe(Math.ceil(m.height/50));
- c.columns=2;await page.evaluate(c=>(window as any).card.setConfig(c),c);await page.waitForTimeout(40);m=await measure();expect(m.height).toBeCloseTo(2*m.tile+12,1);expect(m.size).toBe(Math.ceil(m.height/50));
+ c.columns=2;await page.evaluate(c=>(window as any).card.setConfig(c),c);await page.waitForTimeout(40);m=await measure();expect(m.height).toBeCloseTo(2*m.tile+8,1);expect(m.size).toBe(Math.ceil(m.height/50));
  c.presets=c.presets.slice(0,1);await page.evaluate(c=>(window as any).card.setConfig(c),c);await page.waitForTimeout(40);m=await measure();expect(m.height).toBeCloseTo(m.tile,1);expect(m.size).toBe(Math.ceil(m.height/50));expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
+});
+for (const width of [320, 420, 768, 1144])
+  test(`Large geometry aligns shared surfaces at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await mount(page);
+    const geometry = await page.evaluate(async width => {
+      const card = (window as any).card;
+      const sectionWidths: Record<number, number> = {320:304,420:404,768:335.984375,1144:499.984375};
+      const mount = document.querySelector('#mount') as HTMLElement;
+      mount.style.width = `${sectionWidths[width]}px`;
+      mount.style.setProperty('--ha-section-grid-column-gap', '8px');
+      const refs = document.createElement('div');
+      refs.style.cssText = 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--ha-section-grid-column-gap)';
+      for (let i = 0; i < 3; i++) {
+        const ref = document.createElement('kiosk-entity-card') as any;
+        ref.setConfig({type:'custom:kiosk-entity-card',entity:'cover.example_left',var_large:true});
+        ref.hass = card.hass;
+        refs.append(ref);
+      }
+      mount.prepend(refs);
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      await card.updateComplete;
+      const rect = (e: Element) => { const r=e.getBoundingClientRect();return {x:r.x,width:r.width,height:r.height}; };
+      return {
+        refs: [...refs.children].map((c:any)=>rect(c.shadowRoot.querySelector('[part="surface"]'))),
+        tiles: [...card.shadowRoot.querySelectorAll('.tile')].map(rect),
+        gap: getComputedStyle(card.shadowRoot.querySelector('.matrix')).columnGap,
+        calls: (window as any).calls,
+      };
+    }, width);
+    expect.soft(geometry.gap).toBe('8px');
+    for (let i=0;i<3;i++) {
+      expect.soft(geometry.tiles[i].height).toBe(geometry.refs[i].height);
+      expect.soft(Math.abs(geometry.tiles[i].width-geometry.refs[i].width)).toBeLessThan(.05);
+      expect.soft(Math.abs(geometry.tiles[i].x-geometry.refs[i].x)).toBeLessThan(.05);
+    }
+    expect(geometry.calls).toEqual([]);
+  });
+for (const themed of [false, true])
+  test(`first mount at observer default width resolves ${themed ? 'root rem' : 'default'} gap without overflow`, async ({ page }) => {
+    await page.goto('/tests/harness.html');
+    await page.waitForFunction(() => (window as any).ready);
+    const result = await page.evaluate(async themed => {
+      document.documentElement.style.fontSize = '16px';
+      const card = document.createElement('kiosk-blind-presets-v2-card') as any;
+      card.style.cssText = 'width:320px;font-size:20px';
+      if (themed) card.style.setProperty('--ha-section-grid-column-gap', '1rem');
+      const config = card.constructor.getStubConfig();
+      config.rows = 2;
+      config.columns = 6;
+      config.presets = Array.from({length:6}, (_, i) => ({...config.presets[0],id:`p${i}`,name:`Preset ${i}`}));
+      const calls: unknown[] = [];
+      card.hass = {states:{},callService:(...args: unknown[]) => calls.push(args)};
+      card.setConfig(config);
+      document.querySelector('#mount')!.append(card);
+      let updates = 0;
+      const update = card.updated.bind(card);
+      card.updated = (...args: unknown[]) => { updates++; update(...args); };
+      await card.updateComplete;
+      await new Promise(resolve => setTimeout(resolve, 150));
+      await card.updateComplete;
+      const matrix = card.shadowRoot.querySelector('.matrix');
+      const style = getComputedStyle(matrix);
+      const settledUpdates = updates;
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return {width:matrix.getBoundingClientRect().width,scrollWidth:matrix.scrollWidth,
+        height:matrix.getBoundingClientRect().height,columns:style.gridTemplateColumns.split(' ').length,
+        gap:style.columnGap,size:card.getCardSize(),settledUpdates,updates,calls};
+    }, themed);
+    console.log('FIRST_MOUNT', JSON.stringify({themed,...result}));
+    expect.soft(result.gap).toBe(themed ? '16px' : '8px');
+    expect.soft(result.columns).toBe(themed ? 5 : 6);
+    expect.soft(result.height).toBe(themed ? 308 : 146);
+    expect.soft(result.scrollWidth).toBeLessThanOrEqual(result.width);
+    expect.soft(result.size).toBe(Math.ceil(result.height / 50));
+    expect(result.updates).toBe(result.settledUpdates);
+    expect(result.updates).toBeLessThanOrEqual(3);
+    expect(result.calls).toEqual([]);
+  });
+for (const width of [320, 264, 200])
+  test(`theme-only gap changes reflow at fixed ${width}px without resize or update loops`, async ({ page }) => {
+    await page.goto('/tests/harness.html');
+    await page.waitForFunction(() => (window as any).ready);
+    const result = await page.evaluate(async width => {
+      document.documentElement.style.fontSize = '16px';
+      const parent = document.querySelector('#mount') as HTMLElement;
+      parent.style.setProperty('--ha-section-grid-column-gap', width === 264 ? '0px' : '8px');
+      const card = document.createElement('kiosk-blind-presets-v2-card') as any;
+      card.style.cssText = `width:${width}px;font-size:20px`;
+      const config = card.constructor.getStubConfig();
+      config.rows = 2;
+      config.columns = 6;
+      config.presets = Array.from({length:6}, (_, i) => ({...config.presets[0],id:`p${i}`,name:`Preset ${i}`}));
+      const calls: unknown[] = [];
+      card.hass = {states:{},callService:(...args: unknown[]) => calls.push(args)};
+      card.setConfig(config);
+      let updates = 0;
+      const update = card.updated.bind(card);
+      card.updated = (...args: unknown[]) => { updates++; update(...args); };
+      parent.append(card);
+      const samples = [];
+      for (const gap of [width === 264 ? '0px' : '8px', '1rem', '8px']) {
+        parent.style.setProperty('--ha-section-grid-column-gap', gap);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const matrix = card.shadowRoot.querySelector('.matrix');
+        const style = getComputedStyle(matrix);
+        samples.push({width:card.getBoundingClientRect().width,scrollWidth:matrix.scrollWidth,
+          columns:style.gridTemplateColumns.split(' ').length,gap:parseFloat(style.columnGap),
+          height:matrix.getBoundingClientRect().height,size:card.getCardSize(),updates});
+      }
+      const settledUpdates = updates;
+      await new Promise(resolve => setTimeout(resolve, 100));
+      card.remove();
+      parent.style.setProperty('--ha-section-grid-column-gap', '1rem');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const disconnectedUpdates = updates;
+      parent.append(card);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const matrix = card.shadowRoot.querySelector('.matrix');
+      return {samples,settledUpdates,disconnectedUpdates,calls,
+        reconnected:{height:matrix.getBoundingClientRect().height,size:card.getCardSize(),scrollWidth:matrix.scrollWidth}};
+    }, width);
+    console.log('THEME_ONLY', JSON.stringify({width,...result}));
+    for (const sample of result.samples) {
+      const columns = Math.min(6, Math.floor((width + sample.gap) / (44 + sample.gap)));
+      const rows = Math.ceil(6 / columns);
+      expect.soft(sample.width).toBe(width);
+      expect.soft(sample.columns).toBe(columns);
+      expect.soft(sample.height).toBe(rows * 146 + (rows - 1) * sample.gap);
+      expect.soft(sample.scrollWidth).toBeLessThanOrEqual(width);
+      expect.soft(sample.size).toBe(Math.ceil(sample.height / 50));
+    }
+    expect(result.settledUpdates).toBeLessThanOrEqual(5);
+    expect(result.disconnectedUpdates).toBe(result.settledUpdates);
+    expect(result.reconnected.scrollWidth).toBeLessThanOrEqual(width);
+    expect(result.reconnected.size).toBe(Math.ceil(result.reconnected.height / 50));
+    expect(result.calls).toEqual([]);
+  });
+test('native wrapping preserves configured column widths with sparse presets at fractional boundaries', async ({ page }) => {
+  await mount(page, {...config, rows: 6, columns: 6, presets: config.presets.slice(0, 1)});
+  const failures = await page.evaluate(() => {
+    const card = (window as any).card;
+    const failures = [];
+    for (const columns of [1, 3, 6, 12]) for (const gap of [0, 8, 16])
+      for (const width of [44, 99.875, 100, 155.875, 156, 264, 304, 320, 499.984375, 1144]) {
+        const matrix = card.shadowRoot.querySelector('.matrix');
+        matrix.style.setProperty('--preset-columns', String(columns));
+        card.style.width = `${width}px`;
+        card.style.setProperty('--ha-section-grid-column-gap', `${gap}px`);
+        const tracks = getComputedStyle(matrix).gridTemplateColumns.split(' ');
+        const expected = Math.min(columns, Math.max(1, Math.floor((width + gap) / (44 + gap))));
+        const tileWidth = matrix.querySelector('button').getBoundingClientRect().width;
+        if (tracks.length !== expected || Math.abs(tileWidth - (width - (expected - 1) * gap) / expected) > .05)
+          failures.push({columns,gap,width,tracks,tileWidth,expected});
+      }
+    return failures;
+  });
+  expect(failures).toEqual([]);
+});
+test('row-gap-only theme changes keep masonry height aligned without rerendering', async ({ page }) => {
+  await mount(page, {...config, rows: 2, columns: 2});
+  const samples = await page.evaluate(async () => {
+    const card = (window as any).card;
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync('.matrix { row-gap: var(--test-row-gap, 8px); }');
+    card.shadowRoot.adoptedStyleSheets = [...card.shadowRoot.adoptedStyleSheets, sheet];
+    const samples = [];
+    for (const gap of ['8px', '1rem', '8px']) {
+      card.style.setProperty('--test-row-gap', gap);
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const matrix = card.shadowRoot.querySelector('.matrix');
+      samples.push({height:matrix.getBoundingClientRect().height,size:card.getCardSize()});
+    }
+    return samples;
+  });
+  expect(samples.map(s => s.height)).toEqual([300, 308, 300]);
+  for (const sample of samples) expect(sample.size).toBe(Math.ceil(sample.height / 50));
+  expect(await page.evaluate(() => (window as any).calls)).toEqual([]);
+});
+test('themed gap and shared Large height drive wrapping and masonry size without empty rows', async ({ page }) => {
+  await mount(page, {...config, rows: 3, columns: 12});
+  const size = await page.evaluate(async () => {
+    const card = (window as any).card;
+    card.style.width = '150px';
+    card.style.setProperty('--ha-section-grid-column-gap', '1rem');
+    const style = new CSSStyleSheet();
+    style.replaceSync('.large { --kiosk-height: 174px; }');
+    card.shadowRoot.adoptedStyleSheets = [...card.shadowRoot.adoptedStyleSheets, style];
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await card.updateComplete;
+    const matrix = card.shadowRoot.querySelector('.matrix');
+    const measured = {height:matrix.getBoundingClientRect().height,gap:getComputedStyle(matrix).gap,columns:getComputedStyle(matrix).gridTemplateColumns.split(' ').length,size:card.getCardSize()};
+    card.setConfig({...card.config,presets:[]});
+    await card.updateComplete;
+    return {...measured,emptySize:card.getCardSize(),emptyHeight:matrix.getBoundingClientRect().height};
+  });
+  expect.soft(size.columns).toBe(2);
+  expect.soft(size.gap).toBe('16px');
+  expect.soft(size.height).toBe(364);
+  expect.soft(size.size).toBe(8);
+  expect.soft(size.emptySize).toBe(0);
+  expect(size.emptyHeight).toBe(0);
+  expect(await page.evaluate(() => (window as any).calls)).toEqual([]);
 });
 test('ignored shades use crossed neutral windows while included shade keeps its target picture',async({page})=>{
  const c=structuredClone(config) as any;c.presets[0].positions[1].ignored=true;c.presets[0].positions[2].ignored=true;await mount(page,c);
@@ -535,18 +738,18 @@ for (const width of [320, 360, 400, 420, 600])
     ).toBe(true);
     expect(info.rects.every((r) => r.radius === "14px")).toBe(true);
     expect(info.rects.every((r) => r.shadow !== "none")).toBe(true);
-    const tileWidth = (width - 2 * 12) / 3;
-    const tileHeight = tileWidth / 1.2133333;
-    const height = 3 * tileHeight + 2 * 12;
+    const tileWidth = (width - 2 * 8) / 3;
+    const tileHeight = 146;
+    const height = 3 * tileHeight + 2 * 8;
     expect(info.padding).toBe("0px");
-    expect(info.gap).toBe("12px");
+    expect(info.gap).toBe("8px");
     expect(info.rects[0].left - info.x).toBeCloseTo(0, 2);
     expect(info.rects[0].top - info.y).toBeCloseTo(0, 2);
-    // Grid/aspect-ratio layout rounds to 1/64 CSS px in Chromium.
+    // Grid layout rounds to 1/64 CSS px in Chromium.
     expect(Math.abs(info.rects.at(-1)!.right - info.x - width)).toBeLessThan(.02);
     expect(Math.abs(info.rects.at(-1)!.bottom - info.y - info.h)).toBeLessThan(.02);
-    expect(info.rects[1].left - info.rects[0].right).toBeCloseTo(12, 2);
-    expect(Math.abs(info.rects[3].top - info.rects[0].bottom - 12)).toBeLessThan(.02);
+    expect(info.rects[1].left - info.rects[0].right).toBeCloseTo(8, 2);
+    expect(Math.abs(info.rects[3].top - info.rects[0].bottom - 8)).toBeLessThan(.02);
     expect(info.rects[0].w).toBeCloseTo(tileWidth, 1);
     expect(info.rects[0].h).toBeCloseTo(tileHeight, 1);
     expect(info.h).toBeCloseTo(height, 1);
@@ -699,10 +902,10 @@ for (const width of [320, 360, 400, 420, 600, 44, 99, 100, 155, 156])
       card.style.width = `${width}px`;
       return { size: card.getCardSize(), grid: card.getGridOptions() };
     }, width);
-    const columns = Math.min(3, Math.max(1, Math.floor((width + 12) / 56)));
+    const columns = Math.min(3, Math.max(1, Math.floor((width + 8) / 52)));
     const rows = Math.ceil(9 / columns);
-    const tileHeight = Math.max(44, (width - (columns - 1) * 12) / columns / 1.2133333);
-    expect(sizing.size).toBe(Math.ceil((rows * tileHeight + (rows - 1) * 12) / 50));
+    const tileHeight = 146;
+    expect(sizing.size).toBe(Math.ceil((rows * tileHeight + (rows - 1) * 8) / 50));
     expect(sizing.grid.rows).toBe("auto");
     await expect.poll(() => page.locator(".matrix").evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length)).toBe(columns);
     const bounds = await page.locator(".matrix").evaluate(el => {
