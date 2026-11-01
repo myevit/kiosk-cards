@@ -85,6 +85,106 @@ for (const themed of [false, true])
     expect(result.updates).toBeLessThanOrEqual(3);
     expect(result.calls).toEqual([]);
   });
+for (const width of [320, 264, 200])
+  test(`theme-only gap changes reflow at fixed ${width}px without resize or update loops`, async ({ page }) => {
+    await page.goto('/tests/harness.html');
+    await page.waitForFunction(() => (window as any).ready);
+    const result = await page.evaluate(async width => {
+      document.documentElement.style.fontSize = '16px';
+      const parent = document.querySelector('#mount') as HTMLElement;
+      parent.style.setProperty('--ha-section-grid-column-gap', width === 264 ? '0px' : '8px');
+      const card = document.createElement('kiosk-blind-presets-v2-card') as any;
+      card.style.cssText = `width:${width}px;font-size:20px`;
+      const config = card.constructor.getStubConfig();
+      config.rows = 2;
+      config.columns = 6;
+      config.presets = Array.from({length:6}, (_, i) => ({...config.presets[0],id:`p${i}`,name:`Preset ${i}`}));
+      const calls: unknown[] = [];
+      card.hass = {states:{},callService:(...args: unknown[]) => calls.push(args)};
+      card.setConfig(config);
+      let updates = 0;
+      const update = card.updated.bind(card);
+      card.updated = (...args: unknown[]) => { updates++; update(...args); };
+      parent.append(card);
+      const samples = [];
+      for (const gap of [width === 264 ? '0px' : '8px', '1rem', '8px']) {
+        parent.style.setProperty('--ha-section-grid-column-gap', gap);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const matrix = card.shadowRoot.querySelector('.matrix');
+        const style = getComputedStyle(matrix);
+        samples.push({width:card.getBoundingClientRect().width,scrollWidth:matrix.scrollWidth,
+          columns:style.gridTemplateColumns.split(' ').length,gap:parseFloat(style.columnGap),
+          height:matrix.getBoundingClientRect().height,size:card.getCardSize(),updates});
+      }
+      const settledUpdates = updates;
+      await new Promise(resolve => setTimeout(resolve, 100));
+      card.remove();
+      parent.style.setProperty('--ha-section-grid-column-gap', '1rem');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const disconnectedUpdates = updates;
+      parent.append(card);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const matrix = card.shadowRoot.querySelector('.matrix');
+      return {samples,settledUpdates,disconnectedUpdates,calls,
+        reconnected:{height:matrix.getBoundingClientRect().height,size:card.getCardSize(),scrollWidth:matrix.scrollWidth}};
+    }, width);
+    console.log('THEME_ONLY', JSON.stringify({width,...result}));
+    for (const sample of result.samples) {
+      const columns = Math.min(6, Math.floor((width + sample.gap) / (44 + sample.gap)));
+      const rows = Math.ceil(6 / columns);
+      expect.soft(sample.width).toBe(width);
+      expect.soft(sample.columns).toBe(columns);
+      expect.soft(sample.height).toBe(rows * 146 + (rows - 1) * sample.gap);
+      expect.soft(sample.scrollWidth).toBeLessThanOrEqual(width);
+      expect.soft(sample.size).toBe(Math.ceil(sample.height / 50));
+    }
+    expect(result.settledUpdates).toBeLessThanOrEqual(5);
+    expect(result.disconnectedUpdates).toBe(result.settledUpdates);
+    expect(result.reconnected.scrollWidth).toBeLessThanOrEqual(width);
+    expect(result.reconnected.size).toBe(Math.ceil(result.reconnected.height / 50));
+    expect(result.calls).toEqual([]);
+  });
+test('native wrapping preserves configured column widths with sparse presets at fractional boundaries', async ({ page }) => {
+  await mount(page, {...config, rows: 6, columns: 6, presets: config.presets.slice(0, 1)});
+  const failures = await page.evaluate(() => {
+    const card = (window as any).card;
+    const failures = [];
+    for (const columns of [1, 3, 6, 12]) for (const gap of [0, 8, 16])
+      for (const width of [44, 99.875, 100, 155.875, 156, 264, 304, 320, 499.984375, 1144]) {
+        const matrix = card.shadowRoot.querySelector('.matrix');
+        matrix.style.setProperty('--preset-columns', String(columns));
+        card.style.width = `${width}px`;
+        card.style.setProperty('--ha-section-grid-column-gap', `${gap}px`);
+        const tracks = getComputedStyle(matrix).gridTemplateColumns.split(' ');
+        const expected = Math.min(columns, Math.max(1, Math.floor((width + gap) / (44 + gap))));
+        const tileWidth = matrix.querySelector('button').getBoundingClientRect().width;
+        if (tracks.length !== expected || Math.abs(tileWidth - (width - (expected - 1) * gap) / expected) > .05)
+          failures.push({columns,gap,width,tracks,tileWidth,expected});
+      }
+    return failures;
+  });
+  expect(failures).toEqual([]);
+});
+test('row-gap-only theme changes keep masonry height aligned without rerendering', async ({ page }) => {
+  await mount(page, {...config, rows: 2, columns: 2});
+  const samples = await page.evaluate(async () => {
+    const card = (window as any).card;
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync('.matrix { row-gap: var(--test-row-gap, 8px); }');
+    card.shadowRoot.adoptedStyleSheets = [...card.shadowRoot.adoptedStyleSheets, sheet];
+    const samples = [];
+    for (const gap of ['8px', '1rem', '8px']) {
+      card.style.setProperty('--test-row-gap', gap);
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const matrix = card.shadowRoot.querySelector('.matrix');
+      samples.push({height:matrix.getBoundingClientRect().height,size:card.getCardSize()});
+    }
+    return samples;
+  });
+  expect(samples.map(s => s.height)).toEqual([300, 308, 300]);
+  for (const sample of samples) expect(sample.size).toBe(Math.ceil(sample.height / 50));
+  expect(await page.evaluate(() => (window as any).calls)).toEqual([]);
+});
 test('themed gap and shared Large height drive wrapping and masonry size without empty rows', async ({ page }) => {
   await mount(page, {...config, rows: 3, columns: 12});
   const size = await page.evaluate(async () => {

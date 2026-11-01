@@ -269,21 +269,7 @@ export class KioskBlindPresetsCard extends LitElement {
     config: { state: true },
     busy: { state: true },
     error: { state: true },
-    cardWidth: { state: true },
-    matrixGap: { state: true },
   };
-  private cardWidth = 320;
-  private matrixGap = 8;
-  private resize?: ResizeObserver;
-  connectedCallback() {
-    super.connectedCallback();
-    this.resize = new ResizeObserver((entries) => {
-      this.cardWidth = entries[0].contentRect.width;
-      // Resolve themed units after mount even when the initial width is unchanged.
-      this.matrixGap = this.gridGap();
-    });
-    this.resize.observe(this);
-  }
   busy = false;
   error = "";
   private operation = 0;
@@ -352,7 +338,6 @@ export class KioskBlindPresetsCard extends LitElement {
     this.busy = false;
   }
   disconnectedCallback() {
-    this.resize?.disconnect();
     this.invalidate();
     super.disconnectedCallback();
   }
@@ -482,13 +467,15 @@ export class KioskBlindPresetsCard extends LitElement {
   }
   getCardSize() {
     if (!this.config) return 1;
-    // HA can ask for masonry size before ResizeObserver's first callback.
-    const width = this.getBoundingClientRect().width || this.cardWidth;
+    // HA can ask for masonry size before the card is mounted.
+    const width = this.getBoundingClientRect().width || 320;
     const columns = this.columnsForWidth(width);
     const rows = Math.ceil(this.config.presets.length / columns);
     const tile = this.shadowRoot?.querySelector('.tile');
     const tileHeight = Math.max(44, tile ? parseFloat(getComputedStyle(tile).height) : designTokens.largeHeight);
-    return Math.ceil((rows * tileHeight + Math.max(0, rows - 1) * this.gridGap()) / 50);
+    const matrix = this.shadowRoot?.querySelector('.matrix');
+    const rowGap = matrix ? parseFloat(getComputedStyle(matrix).rowGap) : 8;
+    return Math.ceil((rows * tileHeight + Math.max(0, rows - 1) * rowGap) / 50);
   }
   private gridGap() {
     const matrix = this.shadowRoot?.querySelector('.matrix');
@@ -513,7 +500,10 @@ export class KioskBlindPresetsCard extends LitElement {
 
       .matrix {
         display: grid;
-        gap: var(--ha-section-grid-column-gap, 8px);
+        --matrix-gap: var(--ha-section-grid-column-gap, 8px);
+        gap: var(--matrix-gap);
+        /* Preserve configured empty tracks; wrap natively when 44px no longer fits. */
+        grid-template-columns: repeat(auto-fill, minmax(max(44px, calc((100% - (var(--preset-columns) - 1) * var(--matrix-gap)) / var(--preset-columns))), 1fr));
         padding: 0;
         box-sizing: border-box;
         background: transparent;
@@ -532,7 +522,7 @@ export class KioskBlindPresetsCard extends LitElement {
     if (!this.config || !this.hass) return nothing;
     return html`<div
         class="matrix"
-        style=${`grid-template-columns:repeat(${this.columnsForWidth(this.cardWidth)},minmax(44px,1fr))`}
+        style=${`--preset-columns:${this.config.columns}`}
       >
         ${this.config.presets.map((p) => {
           const problem =
