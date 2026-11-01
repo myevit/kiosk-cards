@@ -2,10 +2,72 @@ import { test, expect } from "@playwright/test";
 test('height follows actual presets rather than empty capacity when duplicating and editing',async({page})=>{
  const c=structuredClone(config);c.rows=3;await mount(page,c);
  const measure=()=>page.evaluate(()=>{const c=(window as any).card;c.style.width='360px';const m=c.shadowRoot.querySelector('.matrix');return{height:m.getBoundingClientRect().height,tile:c.shadowRoot.querySelector('button').getBoundingClientRect().height,size:c.getCardSize(),slots:m.querySelectorAll('.slot').length}});
- await expect.poll(async()=> (await measure()).height).toBeLessThan(110);
+ await expect.poll(async()=> (await measure()).height).toBe(146);
  let m=await measure();expect(m.slots).toBe(0);expect(m.height).toBeCloseTo(m.tile,1);expect(m.size).toBe(Math.ceil(m.height/50));
- c.columns=2;await page.evaluate(c=>(window as any).card.setConfig(c),c);await page.waitForTimeout(40);m=await measure();expect(m.height).toBeCloseTo(2*m.tile+12,1);expect(m.size).toBe(Math.ceil(m.height/50));
+ c.columns=2;await page.evaluate(c=>(window as any).card.setConfig(c),c);await page.waitForTimeout(40);m=await measure();expect(m.height).toBeCloseTo(2*m.tile+8,1);expect(m.size).toBe(Math.ceil(m.height/50));
  c.presets=c.presets.slice(0,1);await page.evaluate(c=>(window as any).card.setConfig(c),c);await page.waitForTimeout(40);m=await measure();expect(m.height).toBeCloseTo(m.tile,1);expect(m.size).toBe(Math.ceil(m.height/50));expect(await page.evaluate(()=>(window as any).calls)).toEqual([]);
+});
+for (const width of [320, 420, 768, 1144])
+  test(`Large geometry aligns shared surfaces at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await mount(page);
+    const geometry = await page.evaluate(async width => {
+      const card = (window as any).card;
+      const sectionWidths: Record<number, number> = {320:304,420:404,768:335.984375,1144:499.984375};
+      const mount = document.querySelector('#mount') as HTMLElement;
+      mount.style.width = `${sectionWidths[width]}px`;
+      mount.style.setProperty('--ha-section-grid-column-gap', '8px');
+      const refs = document.createElement('div');
+      refs.style.cssText = 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--ha-section-grid-column-gap)';
+      for (let i = 0; i < 3; i++) {
+        const ref = document.createElement('kiosk-entity-card') as any;
+        ref.setConfig({type:'custom:kiosk-entity-card',entity:'cover.example_left',var_large:true});
+        ref.hass = card.hass;
+        refs.append(ref);
+      }
+      mount.prepend(refs);
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      await card.updateComplete;
+      const rect = (e: Element) => { const r=e.getBoundingClientRect();return {x:r.x,width:r.width,height:r.height}; };
+      return {
+        refs: [...refs.children].map((c:any)=>rect(c.shadowRoot.querySelector('[part="surface"]'))),
+        tiles: [...card.shadowRoot.querySelectorAll('.tile')].map(rect),
+        gap: getComputedStyle(card.shadowRoot.querySelector('.matrix')).columnGap,
+        calls: (window as any).calls,
+      };
+    }, width);
+    expect.soft(geometry.gap).toBe('8px');
+    for (let i=0;i<3;i++) {
+      expect.soft(geometry.tiles[i].height).toBe(geometry.refs[i].height);
+      expect.soft(Math.abs(geometry.tiles[i].width-geometry.refs[i].width)).toBeLessThan(.05);
+      expect.soft(Math.abs(geometry.tiles[i].x-geometry.refs[i].x)).toBeLessThan(.05);
+    }
+    expect(geometry.calls).toEqual([]);
+  });
+test('themed gap and shared Large height drive wrapping and masonry size without empty rows', async ({ page }) => {
+  await mount(page, {...config, rows: 3, columns: 12});
+  const size = await page.evaluate(async () => {
+    const card = (window as any).card;
+    card.style.width = '150px';
+    card.style.setProperty('--ha-section-grid-column-gap', '1rem');
+    const style = new CSSStyleSheet();
+    style.replaceSync('.large { --kiosk-height: 174px; }');
+    card.shadowRoot.adoptedStyleSheets = [...card.shadowRoot.adoptedStyleSheets, style];
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await card.updateComplete;
+    const matrix = card.shadowRoot.querySelector('.matrix');
+    const measured = {height:matrix.getBoundingClientRect().height,gap:getComputedStyle(matrix).gap,columns:getComputedStyle(matrix).gridTemplateColumns.split(' ').length,size:card.getCardSize()};
+    card.setConfig({...card.config,presets:[]});
+    await card.updateComplete;
+    return {...measured,emptySize:card.getCardSize(),emptyHeight:matrix.getBoundingClientRect().height};
+  });
+  expect.soft(size.columns).toBe(2);
+  expect.soft(size.gap).toBe('16px');
+  expect.soft(size.height).toBe(364);
+  expect.soft(size.size).toBe(8);
+  expect.soft(size.emptySize).toBe(0);
+  expect(size.emptyHeight).toBe(0);
+  expect(await page.evaluate(() => (window as any).calls)).toEqual([]);
 });
 test('ignored shades use crossed neutral windows while included shade keeps its target picture',async({page})=>{
  const c=structuredClone(config) as any;c.presets[0].positions[1].ignored=true;c.presets[0].positions[2].ignored=true;await mount(page,c);
@@ -535,18 +597,18 @@ for (const width of [320, 360, 400, 420, 600])
     ).toBe(true);
     expect(info.rects.every((r) => r.radius === "14px")).toBe(true);
     expect(info.rects.every((r) => r.shadow !== "none")).toBe(true);
-    const tileWidth = (width - 2 * 12) / 3;
-    const tileHeight = tileWidth / 1.2133333;
-    const height = 3 * tileHeight + 2 * 12;
+    const tileWidth = (width - 2 * 8) / 3;
+    const tileHeight = 146;
+    const height = 3 * tileHeight + 2 * 8;
     expect(info.padding).toBe("0px");
-    expect(info.gap).toBe("12px");
+    expect(info.gap).toBe("8px");
     expect(info.rects[0].left - info.x).toBeCloseTo(0, 2);
     expect(info.rects[0].top - info.y).toBeCloseTo(0, 2);
-    // Grid/aspect-ratio layout rounds to 1/64 CSS px in Chromium.
+    // Grid layout rounds to 1/64 CSS px in Chromium.
     expect(Math.abs(info.rects.at(-1)!.right - info.x - width)).toBeLessThan(.02);
     expect(Math.abs(info.rects.at(-1)!.bottom - info.y - info.h)).toBeLessThan(.02);
-    expect(info.rects[1].left - info.rects[0].right).toBeCloseTo(12, 2);
-    expect(Math.abs(info.rects[3].top - info.rects[0].bottom - 12)).toBeLessThan(.02);
+    expect(info.rects[1].left - info.rects[0].right).toBeCloseTo(8, 2);
+    expect(Math.abs(info.rects[3].top - info.rects[0].bottom - 8)).toBeLessThan(.02);
     expect(info.rects[0].w).toBeCloseTo(tileWidth, 1);
     expect(info.rects[0].h).toBeCloseTo(tileHeight, 1);
     expect(info.h).toBeCloseTo(height, 1);
@@ -699,10 +761,10 @@ for (const width of [320, 360, 400, 420, 600, 44, 99, 100, 155, 156])
       card.style.width = `${width}px`;
       return { size: card.getCardSize(), grid: card.getGridOptions() };
     }, width);
-    const columns = Math.min(3, Math.max(1, Math.floor((width + 12) / 56)));
+    const columns = Math.min(3, Math.max(1, Math.floor((width + 8) / 52)));
     const rows = Math.ceil(9 / columns);
-    const tileHeight = Math.max(44, (width - (columns - 1) * 12) / columns / 1.2133333);
-    expect(sizing.size).toBe(Math.ceil((rows * tileHeight + (rows - 1) * 12) / 50));
+    const tileHeight = 146;
+    expect(sizing.size).toBe(Math.ceil((rows * tileHeight + (rows - 1) * 8) / 50));
     expect(sizing.grid.rows).toBe("auto");
     await expect.poll(() => page.locator(".matrix").evaluate(el => getComputedStyle(el).gridTemplateColumns.split(" ").length)).toBe(columns);
     const bounds = await page.locator(".matrix").evaluate(el => {

@@ -1,8 +1,10 @@
 import { LitElement, html, nothing, css } from "lit";
 import type { Hass } from "./types.js";
 import { nativeComponents } from "./native.js";
+import { kioskStyles } from "./design.js";
 import {
   blindPicture,
+  blindPictureStyles,
   presetProblem,
   validateBlindConfig,
   type Blind,
@@ -174,7 +176,7 @@ export class KioskBlindPresetsEditor extends LitElement {
       bottom: "Bottom (% down)",
       ignored: "Ignore this shade",
     })[s.name] || s.name;
-  static styles = css`
+  static styles = [kioskStyles, blindPictureStyles, css`
     :host {
       display: block;
     }
@@ -217,30 +219,11 @@ export class KioskBlindPresetsEditor extends LitElement {
     .pictures {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
-      gap: 12px;
-    }
-    .tile {
-      aspect-ratio: 1.2133333;
-      padding: 0;
-      background: rgba(0, 0, 0, 0.3);
-      color: white;
-    }
-    .tile svg {
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
+      gap: var(--ha-section-grid-column-gap, 8px);
     }
     [data-preview] {
       width: 160px;
-      height: 132px;
-      background: rgba(0, 0, 0, 0.3);
-      color: white;
-      border-radius: 14px;
       margin: 12px auto;
-    }
-    [data-preview] svg {
-      width: 100%;
-      height: 100%;
     }
     [role="status"] {
       display: block;
@@ -248,7 +231,7 @@ export class KioskBlindPresetsEditor extends LitElement {
       font-size: 14px;
       margin: 8px 0;
     }
-  `;
+  `];
   render() {
     if (!this.config) return nothing;
     if (this.removing)
@@ -276,7 +259,7 @@ export class KioskBlindPresetsEditor extends LitElement {
             this.draft = { ...this.draft!, name: e.detail.value.name };
           }}
         ></ha-form>
-        <div data-preview>
+        <div data-preview class="large">
           ${blindPicture(this.config.blinds, this.draft.positions)}
         </div>
         <p>
@@ -393,7 +376,7 @@ export class KioskBlindPresetsEditor extends LitElement {
       </div>
       <h3>Presets</h3>
       <div class="pictures">
-        ${this.config.presets.map((p, i) => html`<button class="tile" aria-label=${`Edit ${p.name}`} title=${presetProblem(p,this.config.blinds)} @click=${() => this.edit(i)}>${blindPicture(this.config.blinds, p.positions)}</button>`)}
+        ${this.config.presets.map((p, i) => html`<button class="tile large" aria-label=${`Edit ${p.name}`} title=${presetProblem(p,this.config.blinds)} @click=${() => this.edit(i)}>${blindPicture(this.config.blinds, p.positions)}</button>`)}
       </div>
       ${this.config.presets.map((p, i) => html`<div class="actions"><span>${p.name}</span><button aria-label=${`Move preset ${p.name} up`} ?disabled=${i === 0} @click=${() => this.movePreset(i, -1)}>↑</button><button aria-label=${`Move preset ${p.name} down`} ?disabled=${i === this.config.presets.length - 1} @click=${() => this.movePreset(i, 1)}>↓</button></div>`)}<button
         ?disabled=${!this.config.blinds.length || this.config.presets.length >= this.config.rows * this.config.columns}

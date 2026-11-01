@@ -1,5 +1,5 @@
 import { LitElement, html, svg, nothing, css } from "lit";
-import { kioskStyles } from "./design.js";
+import { designTokens, kioskStyles } from "./design.js";
 import type { Hass, State } from "./types.js";
 import { validateCommands, nativeAvailable, nativeMatches, type BlindCommand } from './blind-commands.js';
 export interface BlindPosition {
@@ -49,6 +49,31 @@ export function blindPicture(blinds: Blind[], positions: BlindPosition[]) {
     },
   )}</svg>`;
 }
+export const blindPictureStyles = css`
+      .tile, [data-preview] {
+        box-sizing: border-box;
+        border: 0;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-width: 44px;
+        min-height: 44px;
+        height: var(--kiosk-height);
+        border-radius: var(--kiosk-radius, var(--ha-card-border-radius, 12px));
+        box-shadow: var(--kiosk-shadow, var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.1), 0 6px 10px rgba(0, 0, 0, 0.08)));
+        background: var(--kiosk-background, rgba(0, 0, 0, 0.3));
+        color: var(--kiosk-glyph, white);
+        overflow: hidden;
+      }
+      svg {
+        width: 100%;
+        height: 100%;
+        max-height: 110px;
+        pointer-events: none;
+      }
+`;
 export function validateBlindConfig(c: BlindPresetsConfig) {
   if (
     !c ||
@@ -457,18 +482,25 @@ export class KioskBlindPresetsCard extends LitElement {
     const width = this.getBoundingClientRect().width || this.cardWidth;
     const columns = this.columnsForWidth(width);
     const rows = Math.ceil(this.config.presets.length / columns);
-    const tileHeight = Math.max(44, (width - (columns - 1) * 12) / columns / 1.2133333);
-    return Math.ceil((rows * tileHeight + (rows - 1) * 12) / 50);
+    const tile = this.shadowRoot?.querySelector('.tile');
+    const tileHeight = Math.max(44, tile ? parseFloat(getComputedStyle(tile).height) : designTokens.largeHeight);
+    return Math.ceil((rows * tileHeight + Math.max(0, rows - 1) * this.gridGap()) / 50);
+  }
+  private gridGap() {
+    const matrix = this.shadowRoot?.querySelector('.matrix');
+    return matrix ? parseFloat(getComputedStyle(matrix).columnGap) : 8;
   }
   private columnsForWidth(width: number) {
-    // Only inter-button gaps consume space: n * 44 + (n - 1) * 12 <= width.
-    return Math.min(this.config.columns, Math.max(1, Math.floor((width + 12) / 56)));
+    const gap = this.gridGap();
+    // Only inter-button gaps consume space: n * 44 + (n - 1) * gap <= width.
+    return Math.min(this.config.columns, Math.max(1, Math.floor((width + gap) / (44 + gap))));
   }
   getGridOptions() {
     return { columns: 12, rows: "auto", min_columns: 3 };
   }
   static styles = [
     kioskStyles,
+    blindPictureStyles,
     css`
       :host {
         min-width: 0;
@@ -477,24 +509,10 @@ export class KioskBlindPresetsCard extends LitElement {
 
       .matrix {
         display: grid;
-        gap: 12px;
+        gap: var(--ha-section-grid-column-gap, 8px);
         padding: 0;
         box-sizing: border-box;
         background: transparent;
-      }
-      button.tile {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        min-width: 44px;
-        min-height: 44px;
-        aspect-ratio: 1.2133333;
-        border-radius: var(--kiosk-radius, var(--ha-card-border-radius, 14px));
-        box-shadow: var(--kiosk-shadow, var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.1), 0 6px 10px rgba(0, 0, 0, 0.08)));
-        background: var(--kiosk-background, rgba(0, 0, 0, 0.3));
-        color: var(--kiosk-glyph, white);
-        overflow: hidden;
       }
       button.tile.active {
         background: var(--kiosk-active-background, white);
@@ -503,12 +521,6 @@ export class KioskBlindPresetsCard extends LitElement {
       button.tile:active:not(:disabled) {
         filter: brightness(0.85);
         transform: scale(0.98);
-      }
-      svg {
-        width: 100%;
-        height: 100%;
-        max-height: 110px;
-        pointer-events: none;
       }
     `,
   ];
@@ -531,7 +543,7 @@ export class KioskBlindPresetsCard extends LitElement {
             this.presetMatches(p);
           return html`<button
             type="button"
-            class=${`tile ${active ? "active" : ""}`}
+            class=${`tile large ${active ? "active" : ""}`}
             aria-label=${p.name}
             ?disabled=${!!problem}
             @click=${(e: MouseEvent) => this.activate(p, e)}

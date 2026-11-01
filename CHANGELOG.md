@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.1
+
+- Match blind picture buttons to the existing shared Large height (146px), replacing aspect-ratio sizing; inherit the native Sections column gap (8px fallback) with zero outer padding.
+- Use the same themed picture surface in runtime, editor tiles and draft preview; preserve drawings, colors, radius, shadows and selected/disabled behavior.
+- Calculate responsive wrapping and masonry height from the computed gap, shared height and actual preset count, without empty rows. No new configuration, dependency, migration or device-control changes.
+
 ## 0.10.0
 
 - Add native dual-cover mapping with explicit top/bottom entity selectors, absolute T / 100−B targets and pair-scoped latest-intent publishing.
