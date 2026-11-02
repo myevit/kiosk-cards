@@ -68,6 +68,6 @@ for (const [type, name, description] of [
       documentationURL: "https://github.com/myevit/kiosk-cards",
     });
 
-export { KioskFeederCard, KioskFeederCardEditor } from "./feeder.js";
+export { KioskFeederCard, KioskFeederCardEditor, canonicalizeFeederConfig } from "./feeder.js";
 export { KioskFeederMealDialog } from "./feeder-dialog.js";
 export type { FeederConfig, FeederMeal, FeederAppearance } from "./feeder.js";

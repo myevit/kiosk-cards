@@ -160,6 +160,10 @@ function safeAppearance(a: FeederAppearance = {}): FeederAppearance {
   }
   return out;
 }
+// Migration changes only the frontend type; never rename backend/config fields.
+export function canonicalizeFeederConfig(config: FeederConfig): FeederConfig {
+  return { ...config, type: "custom:kiosk-feeder-card" };
+}
 export class KioskFeederCard extends LitElement {
   static properties = {
     config: { state: true },
@@ -1454,7 +1458,7 @@ export class KioskFeederCardEditor extends LitElement {
   hass?: Hass;
   config?: FeederConfig;
   setConfig(c: FeederConfig) {
-    this.config = { ...c };
+    this.config = canonicalizeFeederConfig(c);
   }
   render() {
     const labels: Record<string, string> = {
@@ -1551,7 +1555,7 @@ export class KioskFeederCardEditor extends LitElement {
           } } : {}),
         };
         safeAppearance(c.appearance);
-        this.config = c;
+        this.config = canonicalizeFeederConfig(c);
         this.dispatchEvent(
           new CustomEvent("config-changed", {
             detail: { config: this.config },

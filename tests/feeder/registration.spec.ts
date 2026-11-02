@@ -20,8 +20,9 @@ test('editor retains unknown top-level and nested config', async ({ page }) => {
   await page.addScriptTag({ type: 'module', content: candidate });
   const config = { type: 'custom:kiosk-feeder-card', entity: 'sensor.synthetic_feeder', unknown: { nested: [1, 'retain'] }, grid_options: { columns: 12 }, appearance: { accent_color: '#123456', future: { retain: true }, off: { title_color: '#abcdef', future: 'retain' } } };
   const result = await page.evaluate(async config => {
+    const legacyConfig = { ...config, type: 'custom:tuya-feeder-card' };
     const C: any = customElements.get('kiosk-feeder-card');
-    const editor: any = C.getConfigElement(); editor.setConfig(config); document.body.append(editor); await editor.updateComplete;
+    const editor: any = C.getConfigElement(); editor.setConfig(legacyConfig); document.body.append(editor); await editor.updateComplete;
     let saved: any; editor.addEventListener('config-changed', (e: any) => saved = e.detail.config);
     editor.shadowRoot.querySelector('ha-form').dispatchEvent(new CustomEvent('value-changed', { detail: { value: { title: 'Changed', appearance: { accent_color: '#654321', off: { title_color: '#fedcba' } } } } }));
     return saved;
