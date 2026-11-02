@@ -30,3 +30,7 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+## Feeder card
+
+The feeder implementation and tests derive from [myevit/tuya-feeder-card](https://github.com/myevit/tuya-feeder-card), v0.3.0, commit `0a3c412a7f6a868e90043c91f6908804c97acd27`. Copyright (c) 2026 myevit, MIT. The original license is retained in `licenses/tuya-feeder-card-MIT.txt`.

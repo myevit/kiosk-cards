@@ -349,3 +349,7 @@ Browser tests exercise the real `dist/kiosk-cards.js` with synthetic `hass` obje
 [HA custom-card documentation](https://developers.home-assistant.io/docs/frontend/custom-ui/custom-card/) · [HACS frontend requirements](https://www.hacs.xyz/docs/publish/plugin/)
 
 MIT; bundled Lit notices are included in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Feeder
+
+`custom:kiosk-feeder-card` provides native LocalTuya daily meals, native HA editing dialogs and optional confirmed manual feeding. See [configuration and migration](docs/feeder.md). The standalone feeder resource can remain installed during migration; no legacy aliases are registered.

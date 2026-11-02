@@ -40,6 +40,7 @@ if (!badgeCatalog.some((b: any) => b.type === "kiosk-pill-card"))
   });
 const catalog = ((window as any).customCards ||= []);
 for (const [type, name, description] of [
+  ['kiosk-feeder-card', 'Kiosk feeder', 'Native LocalTuya daily meals and optional confirmed manual feeding'],
   ['kiosk-blind-presets-v2-card', 'Kiosk blind presets', 'Picture-only composite native dual-cover and legacy TDBU blind presets'],
   [
     "kiosk-entity-card",
@@ -66,3 +67,7 @@ for (const [type, name, description] of [
       preview: true,
       documentationURL: "https://github.com/myevit/kiosk-cards",
     });
+
+export { KioskFeederCard, KioskFeederCardEditor, canonicalizeFeederConfig } from "./feeder.js";
+export { KioskFeederMealDialog } from "./feeder-dialog.js";
+export type { FeederConfig, FeederMeal, FeederAppearance } from "./feeder.js";
