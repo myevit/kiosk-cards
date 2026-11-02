@@ -808,7 +808,7 @@ export class KioskFeederCard extends LitElement {
         </header>
         ${this.message ? html`<div part="status" class="status" role="status">${this.message}</div>` : nothing}
         <section
-          aria-label="FeederMeal schedule"
+          aria-label="Meal schedule"
           ?inert=${this.busy || this.feedBusy}
         >
           ${
@@ -831,7 +831,7 @@ export class KioskFeederCard extends LitElement {
                         part="enabled control"
                         role="switch"
                         aria-label=${`Enabled ${n + 1}`}
-                        aria-description=${`FeederMeal ${n + 1} at ${meal.time}; tap to ${meal.enabled ? "disable" : "enable"}`}
+                        aria-description=${`Meal ${n + 1} at ${meal.time}; tap to ${meal.enabled ? "disable" : "enable"}`}
                         aria-checked=${String(meal.enabled)}
                         aria-busy=${String(this.busy && this.toggling === n)}
                         ?disabled=${this.locked || this.failed}
@@ -1461,7 +1461,7 @@ export class KioskFeederCardEditor extends LitElement {
       entity: "Schedule sensor",
       title: "Title",
       icon: "Identity icon (Add meal)",
-      meal_icon_mode: "FeederMeal icons",
+      meal_icon_mode: "Meal icons",
       meal_icon: "Fixed meal icon",
       manual_feed: "Show manual feeding",
       feed_title: "Feeding title",
@@ -1473,7 +1473,7 @@ export class KioskFeederCardEditor extends LitElement {
       border_radius: "Corner radius",
       font_family: "Font family",
       header_font_size: "Header size",
-      meal_time_font_size: "FeederMeal time size",
+      meal_time_font_size: "Meal time size",
       row_background: "Row color",
       card_background: "Card color",
       control_size: "Control size (minimum 44px)",

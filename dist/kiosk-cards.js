@@ -715,7 +715,7 @@ var We=Object.defineProperty;var w=(n,i)=>()=>(n&&(i=n(n=0)),i);var Ke=(n,i)=>{f
         </header>
         ${this.message?l`<div part="status" class="status" role="status">${this.message}</div>`:d}
         <section
-          aria-label="FeederMeal schedule"
+          aria-label="Meal schedule"
           ?inert=${this.busy||this.feedBusy}
         >
           ${this.writable||this.attrs.native_feeder_profile==="ft11w"&&this.attrs.snapshot_source==="restored"&&this.attrs.schedule_valid===!0||this.busy||this.failed||this.conflict?this.baseline.map((t,e)=>l`<div
@@ -728,7 +728,7 @@ var We=Object.defineProperty;var w=(n,i)=>()=>(n&&(i=n(n=0)),i);var Ke=(n,i)=>{f
                         part="enabled control"
                         role="switch"
                         aria-label=${`Enabled ${e+1}`}
-                        aria-description=${`FeederMeal ${e+1} at ${t.time}; tap to ${t.enabled?"disable":"enable"}`}
+                        aria-description=${`Meal ${e+1} at ${t.time}; tap to ${t.enabled?"disable":"enable"}`}
                         aria-checked=${String(t.enabled)}
                         aria-busy=${String(this.busy&&this.toggling===e)}
                         ?disabled=${this.locked||this.failed}
@@ -1334,7 +1334,7 @@ var We=Object.defineProperty;var w=(n,i)=>()=>(n&&(i=n(n=0)),i);var Ke=(n,i)=>{f
     p {
       color: var(--secondary-text-color, #777);
     }
-  `}},Ct=class extends g{static{this.properties={hass:{attribute:!1},config:{state:!0}}}setConfig(i){this.config={...i}}render(){let i={entity:"Schedule sensor",title:"Title",icon:"Identity icon (Add meal)",meal_icon_mode:"FeederMeal icons",meal_icon:"Fixed meal icon",manual_feed:"Show manual feeding",feed_title:"Feeding title",feed_icon:"Feeding icon",portions_entity:"Portions helper (optional)",appearance:"Appearance",accent_color:"Accent color",icon_color:"Icon color",border_radius:"Corner radius",font_family:"Font family",header_font_size:"Header size",meal_time_font_size:"FeederMeal time size",row_background:"Row color",card_background:"Card color",control_size:"Control size (minimum 44px)",off:"Off appearance",background:"Tile color",icon_background:"Icon circle color",title_color:"Title color",subtitle_color:"Details color"};return l`<ha-form
+  `}},Ct=class extends g{static{this.properties={hass:{attribute:!1},config:{state:!0}}}setConfig(i){this.config={...i}}render(){let i={entity:"Schedule sensor",title:"Title",icon:"Identity icon (Add meal)",meal_icon_mode:"Meal icons",meal_icon:"Fixed meal icon",manual_feed:"Show manual feeding",feed_title:"Feeding title",feed_icon:"Feeding icon",portions_entity:"Portions helper (optional)",appearance:"Appearance",accent_color:"Accent color",icon_color:"Icon color",border_radius:"Corner radius",font_family:"Font family",header_font_size:"Header size",meal_time_font_size:"Meal time size",row_background:"Row color",card_background:"Card color",control_size:"Control size (minimum 44px)",off:"Off appearance",background:"Tile color",icon_background:"Icon circle color",title_color:"Title color",subtitle_color:"Details color"};return l`<ha-form
       .hass=${this.hass}
       .data=${this.config}
       .schema=${[{name:"entity",required:!0,selector:{entity:{domain:"sensor",integration:"localtuya",include_entities:Object.entries(this.hass?.states??{}).filter(([t,e])=>t.startsWith("sensor.")&&e.attributes.native_feeder_profile==="ft11w").map(([t])=>t)}}},{name:"title",selector:{text:{}}},{name:"icon",selector:{icon:{}}},{name:"meal_icon_mode",selector:{select:{options:[{value:"time_of_day",label:"Time of day"},{value:"fixed",label:"Fixed icon"}]}}},{name:"meal_icon",selector:{icon:{}}},{name:"manual_feed",selector:{boolean:{}}},{name:"feed_title",selector:{text:{}}},{name:"feed_icon",selector:{icon:{}}},{name:"portions_entity",selector:{entity:{domain:"input_number"}}},{name:"appearance",type:"expandable",schema:[...Xt.map(t=>({name:t,selector:{text:{}}})),{name:"off",type:"expandable",schema:te.map(t=>({name:t,selector:{text:{}}}))}]}]}
