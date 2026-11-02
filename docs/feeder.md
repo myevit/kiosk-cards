@@ -10,7 +10,7 @@ Native LocalTuya service names, payloads, safety guards, one-shot confirmation a
 
 # Kiosk feeder card
 
-A touchscreen Home Assistant card for the native FT-11W profile in [LocalTuya](https://github.com/myevit/hass-localtuya). **0.3.0 is a breaking native-contract candidate**, prepared locally, not released or activated. It requires the paired native backend; the old ad-hoc integration is not supported or shimmed.
+A touchscreen Home Assistant card for the native FT-11W profile in [LocalTuya](https://github.com/myevit/hass-localtuya). **0.11.0 is an unreleased consolidation candidate**, not installed or activated. It retains the standalone v0.3.0 native contract and requires the paired native backend; the old ad-hoc integration is not supported or shimmed.
 
 The transparent wrapper contains independent standard-theme surfaces: one optional manual-feed container and a tile for each meal. A meal's **left icon circle** immediately toggles its enabled state. Its **time/title and subtitle** open a Home Assistant-native meal dialog. No separate right-hand switch, global Save or persistent status footer is shown.
 
@@ -26,9 +26,9 @@ See [the native migration and activation boundary](docs/NATIVE_MIGRATION.md) bef
 ## HACS installation
 
 1. After paired review and separate activation approval, install/configure the native LocalTuya FT-11W profile. This document does not authorize activation.
-2. In HACS → Custom repositories add `https://github.com/myevit/kiosk-feeder-card` as **Dashboard**.
+2. In HACS → Custom repositories add `https://github.com/myevit/kiosk-cards` as **Dashboard**.
 3. Download a release and let HACS add its module resource. Refresh after an update; avoid duplicate resources.
-4. Add **Tuya Feeder** with the visual editor, selecting its schedule sensor.
+4. Add **Kiosk feeder** with the visual editor, selecting its schedule sensor.
 
 ```yaml
 type: custom:kiosk-feeder-card
@@ -123,10 +123,10 @@ Meal: `{days: [all seven lowercase names], time: "HH:MM", portions: integer, ena
 ## Development
 
 ```sh
-npm ci
-npm run build
-npx playwright install chromium
-npm test
+pnpm install --frozen-lockfile
+pnpm run build
+pnpm exec playwright install chromium
+pnpm test
 python3 scripts/check_public.py
 ```
 
