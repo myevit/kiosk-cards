@@ -10,9 +10,9 @@ export default defineConfig({
       args: ["--no-sandbox"],
     },
   },
-  webServer: {
+  webServer: [{
     command: "python3 -m http.server 8897 --bind 127.0.0.1",
     port: 8897,
     reuseExistingServer: !process.env.CI,
-  },
+  }, { command: "node tests/feeder/server.mjs", port: 4173, reuseExistingServer: !process.env.CI }],
 });

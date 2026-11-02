@@ -1,3 +1,9 @@
+# 0.11.0 (unreleased)
+
+- Consolidate the MIT feeder card into the single kiosk bundle as `custom:kiosk-feeder-card`, with distinct editor/dialog registrations. Preserve appearance and native LocalTuya safety behavior.
+- Retain unknown editor configuration fields, including nested appearance extensions; CSS application remains validated.
+- Port all standalone browser specs and the pinned offline real-HA contract; add resource load-order and config preservation tests.
+
 # Changelog
 
 ## 0.10.1
